@@ -1,0 +1,43 @@
+# ──────────────────────────────────────────────
+# PTU Benchmark — Project Configuration
+# ──────────────────────────────────────────────
+# Copy this file from projects/template/ into a
+# new project folder and fill in the values.
+#
+#   cp -r projects/template projects/my-customer
+#
+# Then edit project.yaml with your deployment details.
+
+# ── Service Identity ──────────────────────────────────────────
+service_name: "replace-with-service-name"          # Human-readable service label
+model_name:   "Qwen3.6-Plus-2026-04-02"            # Model display name (from console)
+model_code:   "qwen3.6-plus-2026-04-02"            # Model API identifier (was PTU_MODEL_ID)
+deployment_id: "qwen3.6-plus-2026-04-02-xxxxxxxx" # Unique deployment ID (from console)
+
+# ── Billing ───────────────────────────────────────────────────
+billing_method: "Provisioned Throughput Unit / Pay-as-you-go"
+
+# ── Throughput Quota ──────────────────────────────────────────
+input_tpm:  100000     # Input tokens per minute (100 kTPM)
+output_tpm: 10000      # Output tokens per minute (10 kTPM)
+
+# ── Pricing ───────────────────────────────────────────────────
+input_unit_price:  0.12   # USD per kTPM*hour (input)
+output_unit_price: 0.72   # USD per kTPM*hour (output)
+hourly_price: 19.2        # USD per hour (total)
+
+# ── Benchmark Tuning (per-project, was in root .env) ──────────
+# Adjust these to match your deployment's capacity.
+concurrency_levels:
+  - 10
+  - 50
+  - 100
+
+sustained_duration: 1800       # seconds (30 minutes)
+sustained_concurrency: 20
+burst_size: 200
+
+context_sizes:
+  "32K":  32000
+  "64K":  64000
+  "128K": 128000

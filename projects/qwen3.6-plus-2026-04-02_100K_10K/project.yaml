@@ -1,0 +1,39 @@
+# ──────────────────────────────────────────────
+# PTU Benchmark — Project: "test"
+# ──────────────────────────────────────────────
+# Example project created from the Alibaba Cloud
+# Model Studio console deployment shown in the
+# reference screenshots.
+
+# ── Service Identity ──────────────────────────────────────────
+service_name: "test"
+model_name:   "Qwen3.6-Plus-2026-04-02"
+model_code:   "qwen3.6-plus-2026-04-02"              # ← was PTU_MODEL_ID in root .env
+deployment_id: "qwen3.6-plus-2026-04-02-d1839645ee95"
+
+# ── Billing ───────────────────────────────────────────────────
+billing_method: "Provisioned Throughput Unit / Pay-as-you-go"
+
+# ── Throughput Quota ──────────────────────────────────────────
+input_tpm:  100000     # 100 kTPM
+output_tpm: 10000      # 10 kTPM
+
+# ── Pricing ───────────────────────────────────────────────────
+input_unit_price:  0.12   # USD per kTPM*hour (input)
+output_unit_price: 0.72   # USD per kTPM*hour (output)
+hourly_price: 19.2        # USD per hour (total)
+
+# ── Benchmark Tuning (per-project, was in root .env) ──────────
+concurrency_levels:
+  - 10
+  - 50
+  - 100
+
+sustained_duration: 1800       # seconds (30 minutes)
+sustained_concurrency: 20
+burst_size: 200
+
+context_sizes:
+  "32K":  32000
+  "64K":  64000
+  "128K": 128000

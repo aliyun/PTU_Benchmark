@@ -1,0 +1,46 @@
+# ──────────────────────────────────────────────
+# PTU Benchmark — Project: "token-api" (baseline)
+# ──────────────────────────────────────────────
+# Pay-as-you-go / shared-tenant Token API endpoint,
+# used as the *baseline* in A/B comparisons against
+# a dedicated PTU deployment.
+#
+# Run an A/B compare:
+#   python -m ptu_benchmark \
+#     --project projects/qwen3.6-plus-2026-04-02_100K_10K \
+#     --compare-with projects/token-api \
+#     --scenarios A B --export
+
+# ── Service Identity ──────────────────────────────────────────
+service_name: "token-api"
+model_name:   "Qwen3.6-Plus (Token API)"
+model_code:   "qwen3.6-plus"                # ← shared Token-API model id
+deployment_id: "shared-tenant"
+
+# ── Billing ───────────────────────────────────────────────────
+billing_method: "Token-based (Pay-as-you-go)"
+
+# ── Throughput Quota (account default; informational only) ────
+input_tpm:  0          # not applicable for shared Token API
+output_tpm: 0
+
+# ── Pricing (USD per 1M tokens; informational only) ───────────
+input_unit_price:  0.0
+output_unit_price: 0.0
+hourly_price:      0.0
+
+# ── Benchmark Tuning ──────────────────────────────────────────
+# Use the same load profile as the PTU project so the A/B is fair.
+concurrency_levels:
+  - 10
+  - 50
+  - 100
+
+sustained_duration: 1800
+sustained_concurrency: 20
+burst_size: 200
+
+context_sizes:
+  "32K":  32000
+  "64K":  64000
+  "128K": 128000

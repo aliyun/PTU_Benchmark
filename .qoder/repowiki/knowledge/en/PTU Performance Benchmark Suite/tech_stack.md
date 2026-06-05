@@ -1,0 +1,1 @@
+Uses `openai>=1.0.0` SDK for synchronous streaming requests (Scenario A) and `aiohttp>=3.9.0` for async concurrent streaming (Scenarios B–E); percentile statistics via `numpy>=1.24.0`; table formatting via `tabulate>=0.9.0`; dotenv loading via `python-dotenv>=1.0.0`.

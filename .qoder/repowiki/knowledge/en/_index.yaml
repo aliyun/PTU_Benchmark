@@ -1,0 +1,23 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: en-US
+branch: Q0DeR-MaG1C-BrAnCh-Fo2-NoN-GiT-Or-No-C0MmIt
+exported_at: "2026-06-05T08:53:26Z"
+modules:
+    "":
+        dir_name: PTU Performance Benchmark Suite
+        title: PTU Performance Benchmark Suite
+        scope:
+            - src/
+            - tests/
+            - .gitignore
+            - Makefile
+            - PTU-MU-META-Strategy.md
+            - benchmark-prompt.md
+            - pyproject.toml
+            - requirements.txt
+            - .env.example
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []

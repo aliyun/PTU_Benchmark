@@ -1,0 +1,16 @@
+schema_version: 1
+module_path: ""
+title: PTU Performance Benchmark Suite
+scope:
+    - src/
+    - tests/
+    - .gitignore
+    - Makefile
+    - PTU-MU-META-Strategy.md
+    - benchmark-prompt.md
+    - pyproject.toml
+    - requirements.txt
+    - .env.example
+source_files: []
+depends_on: []
+related_to: []
