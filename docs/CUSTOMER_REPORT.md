@@ -6,10 +6,18 @@
 
 ## How to Use This Template
 
-1. Run the benchmark suite: `python -m ptu_benchmark --export`
-2. Open `results/benchmark_summary.csv` for aggregated numbers
-3. Replace every `[___]` placeholder below with actual values
+1. Run the benchmark suite: `python -m ptu_benchmark --project projects/my-ptu`
+2. Open the auto-generated reports in the dated result folder:
+   - **`executive_report.md`** — the flagship A/B comparison (or single-project deep dive)
+   - **`business_report.docx`** — professional one-page Word summary (decision makers)
+   - **`subject_only_executive_report.md`** — PTU-only deep dive (A/B mode only)
+3. Use the numbers from the auto-generated reports to fill in the `[___]` placeholders below
 4. Export to PDF or send as formatted email
+
+> **Tip:** The auto-generated `executive_report.md` (with matplotlib charts) and
+> `business_report.docx` (ready-to-send Word document) may be sufficient
+> for many engagements. Use this template when you need a more polished, customer-branded report
+> with cost analysis and recommendations.
 
 ---
 

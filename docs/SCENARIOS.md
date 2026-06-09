@@ -18,7 +18,7 @@
 ## Scenario A — Single Request Baseline
 
 **Module:** `scenario_a.py`
-**Run:** `python -m ptu_benchmark --scenarios A` or `make run-a`
+**Run:** `python -m ptu_benchmark --project projects/my-ptu --scenarios A` or `make run-a`
 **Duration:** ~2 minutes
 
 ### Purpose
@@ -62,7 +62,7 @@ No configuration needed. Scenario A uses `default_max_tokens=2048` from config.
 ## Scenario B — Concurrent Load
 
 **Module:** `scenario_b.py`
-**Run:** `python -m ptu_benchmark --scenarios B` or `make run-b`
+**Run:** `python -m ptu_benchmark --project projects/my-ptu --scenarios B` or `make run-b`
 **Duration:** ~5 minutes (depends on concurrency levels)
 
 ### Purpose
@@ -107,6 +107,58 @@ All metrics from Scenario A, plus:
 CONCURRENCY_LEVELS=10,50,100     # add more levels: 10,25,50,75,100,150
 ```
 
+Or in `project.yaml`:
+
+```yaml
+concurrency_levels:              # OPTIONAL — omit to auto-derive from output_tpm
+  - 10
+  - 50
+  - 100
+# tps_estimate: 150              # optional, default 150 — tunes the heuristic
+```
+
+**Auto-derived levels.** When `concurrency_levels` is omitted and the project
+sets `output_tpm`, a quota-aligned sweep is computed automatically:
+
+```
+capacity ≈ output_tpm / (tps_estimate * 60)
+levels   = [½·capacity, capacity, 2·capacity]
+```
+
+This guarantees the benchmark exercises *under-load*, *at-capacity*, and
+*over-capacity stress* points appropriate for the deployment's actual TPM
+quota. See [USAGE.md](USAGE.md#auto-derived-concurrency-levels) for details.
+
+### TPM Utilization Summary
+
+After all concurrency batches complete, Scenario B prints a side-by-side
+comparison of **achieved aggregate TPM** vs the **provisioned `output_tpm`
+quota** (when `output_tpm` is defined in `project.yaml`):
+
+```
+=== TPM Utilization vs Provisioned Quota ===
+Provisioned output TPM: 10,000
++-------------+--------------+-----------+--------+------+-----------------+
+| Concurrency | Achieved TPM | Quota TPM | Util % | 429s | Status          |
++=============+==============+===========+========+======+=================+
+| 1           |        4,500 |    10,000 |  45.0% |    0 | OK              |
+| 2           |        9,800 |    10,000 |  98.0% |    0 | NEAR QUOTA      |
+| 4           |       10,200 |    10,000 | 102.0% |   12 | THROTTLED (429) |
++-------------+--------------+-----------+--------+------+-----------------+
+```
+
+Status thresholds:
+
+| Status | Condition |
+|--------|-----------|
+| `OK` | Util % < 80% |
+| `NEAR QUOTA` | 80% ≤ Util % < 100% |
+| `OVER QUOTA` | Util % ≥ 100% (no 429s yet — usually transient) |
+| `THROTTLED (429)` | One or more requests received HTTP 429 |
+
+Use this table to **right-size** your PTU: if every level shows `OK`, you have
+headroom; if `THROTTLED` appears below your target traffic, scale up.
+
 ### POC Tip
 
 > Run Scenario B on **both** Token API and PTU. The divergence at concurrency=50 is the most compelling visual for customers.
@@ -116,7 +168,7 @@ CONCURRENCY_LEVELS=10,50,100     # add more levels: 10,25,50,75,100,150
 ## Scenario C — Sustained Throughput
 
 **Module:** `scenario_c.py`
-**Run:** `python -m ptu_benchmark --scenarios C` or `make run-c`
+**Run:** `python -m ptu_benchmark --project projects/my-ptu --scenarios C` or `make run-c`
 **Duration:** 30 minutes (configurable)
 
 ### Purpose
@@ -172,7 +224,7 @@ SUSTAINED_CONCURRENCY=20       # increase for higher-capacity PTUs
 ## Scenario D — Peak Burst Test
 
 **Module:** `scenario_d.py`
-**Run:** `python -m ptu_benchmark --scenarios D` or `make run-d`
+**Run:** `python -m ptu_benchmark --project projects/my-ptu --scenarios D` or `make run-d`
 **Duration:** ~2 minutes
 
 ### Purpose
@@ -224,7 +276,7 @@ BURST_SIZE=200     # increase to 500 for stress-testing large PTUs
 ## Scenario E — Long Context Test
 
 **Module:** `scenario_e.py`
-**Run:** `python -m ptu_benchmark --scenarios E` or `make run-e`
+**Run:** `python -m ptu_benchmark --project projects/my-ptu --scenarios E` or `make run-e`
 **Duration:** ~5 minutes
 
 ### Purpose
@@ -290,11 +342,22 @@ For a standard POC engagement, run scenarios in this order:
 ### Quick Demo Set (~10 minutes)
 
 ```bash
-python -m ptu_benchmark --scenarios A B D --export
+python -m ptu_benchmark --project projects/my-ptu --scenarios A B D
 ```
 
 ### Full POC Set (~45 minutes)
 
 ```bash
-python -m ptu_benchmark --export
+python -m ptu_benchmark --project projects/my-ptu
 ```
+
+### Reports
+
+Every run automatically generates reports in the dated result folder:
+
+- **`executive_report.md`** — the flagship deliverable. In A/B mode: full comparison analysis with both arms, matplotlib charts (TTFT percentiles, TPS throughput, error rates, side-by-side), per-scenario statistical tables, and comparison deltas. In single-project mode: equivalent depth for one project.
+- **`business_report.docx`** — professional one-page Word document with headline metrics, explanations, scenario overview, key takeaways, and cost
+- **`metrics.csv`** — (A/B only) flat side-by-side numbers for spreadsheet analysis
+- **`subject_only_executive_report.md`** — (A/B only) PTU-only deep dive alongside the full comparison
+
+See [USAGE.md](USAGE.md#result-output--reports) for full details on the output structure.

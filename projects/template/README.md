@@ -38,7 +38,7 @@ When you pass `--project projects/my-customer`:
 3. All benchmark results are exported into `projects/my-customer/results/`
 4. The customer report template auto-populates with project-specific pricing
 
-## Example: projects/qwen3.6-plus-2026-04-02_100K_10K/
+## Example: projects/qwen3.6-plus-2026-04-02_500K_100K/
 
-The `projects/qwen3.6-plus-2026-04-02_100K_10K/` folder is an example project pre-filled with sample
+The `projects/qwen3.6-plus-2026-04-02_500K_100K/` folder is an example project pre-filled with sample
 deployment data from the Alibaba Cloud console. Use it as a reference.

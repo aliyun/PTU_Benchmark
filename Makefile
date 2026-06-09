@@ -27,45 +27,44 @@ test:  ## Run unit tests
 	python -m pytest tests/ -v
 
 # ── Benchmark runs ─────────────────────────────────────────────
+# Override at the command line:
+#   make run P=projects/my-ptu B=projects/token-api SCN="A B D"
+#   make run-a P=projects/my-ptu
+#
+# All targets run with A/B comparison by default (PTU vs Token API).
+# Use --no-compare in the CLI directly if you need a single-project run.
 
-run:  ## Run all benchmark scenarios
-	python -m ptu_benchmark --project projects/qwen3.6-plus-2026-04-02_100K_10K --export
+P ?= projects/qwen3.6-plus-2026-04-02_500K_100K
+B ?= projects/token-api
+SCN ?= A B
+
+run:  ## Run all scenarios with A/B comparison. Vars: P, B, SCN
+	python -m ptu_benchmark --project $(P) --compare-with $(B) --scenarios $(SCN)
 
 run-all: run  ## Alias for 'run'
 
-run-a:  ## Run Scenario A only (Single Request Baseline)
-	python -m ptu_benchmark --project projects/qwen3.6-plus-2026-04-02_100K_10K --scenarios A
+run-a:  ## Run Scenario A only (with compare). Vars: P, B
+	python -m ptu_benchmark --project $(P) --compare-with $(B) --scenarios A
 
-run-b:  ## Run Scenario B only (Concurrent Load)
-	python -m ptu_benchmark --project projects/qwen3.6-plus-2026-04-02_100K_10K --scenarios B
+run-b:  ## Run Scenario B only (with compare). Vars: P, B
+	python -m ptu_benchmark --project $(P) --compare-with $(B) --scenarios B
 
-run-c:  ## Run Scenario C only (Sustained Throughput)
-	python -m ptu_benchmark --project projects/qwen3.6-plus-2026-04-02_100K_10K --scenarios C
+run-c:  ## Run Scenario C only (with compare). Vars: P, B
+	python -m ptu_benchmark --project $(P) --compare-with $(B) --scenarios C
 
-run-d:  ## Run Scenario D only (Peak Burst)
-	python -m ptu_benchmark --project projects/qwen3.6-plus-2026-04-02_100K_10K --scenarios D
+run-d:  ## Run Scenario D only (with compare). Vars: P, B
+	python -m ptu_benchmark --project $(P) --compare-with $(B) --scenarios D
 
-run-e:  ## Run Scenario E only (Long Context)
-	python -m ptu_benchmark --project projects/qwen3.6-plus-2026-04-02_100K_10K --scenarios E
+run-e:  ## Run Scenario E only (with compare). Vars: P, B
+	python -m ptu_benchmark --project $(P) --compare-with $(B) --scenarios E
 
 list:  ## List available scenarios
 	python -m ptu_benchmark --list
 
-run-project: run  ## Alias for 'run'
+# ── Aliases ───────────────────────────────────────────────────
 
-project-test: run  ## Alias for 'run'
-
-# ── A/B comparison ─────────────────────────────────────────────
-
-# Override at the CLI:  make compare A=projects/ptu B=projects/token-api SCN="A B"
-A ?= projects/qwen3.6-plus-2026-04-02_100K_10K
-B ?= projects/token-api
-SCN ?= A B
-
-compare:  ## A/B compare two projects → 3 reports (A, B, compare). Vars: A, B, SCN
-	python -m ptu_benchmark --project $(A) --compare-with $(B) --scenarios $(SCN)
-
-poc: compare  ## Alias for 'compare' — single-shot POC A/B run
+compare: run  ## Alias for 'run' (A/B comparison)
+poc: run      ## Alias for 'run' — single-shot POC A/B run
 
 # ── Cleanup ────────────────────────────────────────────────────
 

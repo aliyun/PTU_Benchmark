@@ -7,7 +7,7 @@
 #
 # Run an A/B compare:
 #   python -m ptu_benchmark \
-#     --project projects/qwen3.6-plus-2026-04-02_100K_10K \
+#     --project projects/qwen3.6-plus-2026-04-02_500K_100K \
 #     --compare-with projects/token-api \
 #     --scenarios A B --export
 
@@ -20,9 +20,10 @@ deployment_id: "shared-tenant"
 # ── Billing ───────────────────────────────────────────────────
 billing_method: "Token-based (Pay-as-you-go)"
 
-# ── Throughput Quota (account default; informational only) ────
-input_tpm:  0          # not applicable for shared Token API
-output_tpm: 0
+# ── Throughput Quota (Token API shared-tenant account limit) ────
+# Combined TPM = 5M, split by max-token ratio (991K input : 64K output ≈ 15:1)
+input_tpm:  4700000    # ~4.7M input TPM
+output_tpm:  300000    # ~300K output TPM (5M total combined)
 
 # ── Pricing (USD per 1M tokens; informational only) ───────────
 input_unit_price:  0.0

@@ -28,10 +28,22 @@ hourly_price: 19.2        # USD per hour (total)
 
 # ── Benchmark Tuning (per-project, was in root .env) ──────────
 # Adjust these to match your deployment's capacity.
+#
+# concurrency_levels can be:
+#   • Explicit list (below) — used as-is.
+#   • Omitted — auto-derived from output_tpm using the formula
+#       capacity ≈ output_tpm / (tps_estimate * 60)
+#     yielding a [½·capacity, capacity, 2·capacity] sweep.
+#   • tps_estimate (optional, default 150) tunes the heuristic.
+#     Lower it (e.g. 80) for slower / quantised models;
+#     raise it (e.g. 200) for blazing-fast PTU deployments.
+#     If the auto-derived sweep produces 429s at the top level,
+#     your tps_estimate is too low.
 concurrency_levels:
   - 10
   - 50
   - 100
+# tps_estimate: 150          # optional; used only when concurrency_levels is omitted
 
 sustained_duration: 1800       # seconds (30 minutes)
 sustained_concurrency: 20

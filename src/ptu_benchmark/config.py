@@ -117,6 +117,15 @@ class BenchmarkConfig:
 
     # ── Scenario B ──────────────────────────────────────────────────
     concurrency_levels: list[int] = field(default_factory=lambda: [10, 50, 100])
+    # Whether concurrency_levels was auto-derived from output_tpm
+    # (purely informational, used by reporting / log lines).
+    concurrency_levels_auto_derived: bool = False
+    # Heuristic TPS estimate used when auto-deriving concurrency levels
+    # from provisioned output_tpm. Default 150 TPS targets modern fast-
+    # generation models on dedicated infrastructure (PTU). Override per
+    # project for slower deployments (e.g. tps_estimate: 80) or set
+    # concurrency_levels explicitly to bypass the heuristic entirely.
+    tps_estimate: float = 150.0
 
     # ── Scenario C ──────────────────────────────────────────────────
     sustained_duration: int = 1800      # seconds
@@ -298,10 +307,34 @@ def _apply_yaml_overrides(yaml_path: Path, config: BenchmarkConfig) -> None:
     except Exception:
         return
 
-    # Concurrency levels
+    # Optional TPS heuristic override (used for auto-deriving concurrency).
+    tps_est = raw.get("tps_estimate")
+    if isinstance(tps_est, (int, float)) and tps_est > 0:
+        config.tps_estimate = float(tps_est)
+
+    # Concurrency levels:
+    #   1) Use explicit YAML list if provided.
+    #   2) Otherwise, if the project has a provisioned output_tpm, auto-derive
+    #      sensible levels from quota / typical TPS — so users don't have to
+    #      guess values that match their PTU sizing.
+    #   3) Otherwise, keep the dataclass default ([10, 50, 100]).
     levels = raw.get("concurrency_levels")
     if isinstance(levels, list) and all(isinstance(x, int) for x in levels):
         config.concurrency_levels = levels
+        config.concurrency_levels_auto_derived = False
+    elif config.project and config.project.output_tpm > 0:
+        derived = derive_concurrency_levels(
+            output_tpm=config.project.output_tpm,
+            max_tokens=config.concurrent_max_tokens,
+            tps_estimate=config.tps_estimate,
+        )
+        config.concurrency_levels = derived
+        config.concurrency_levels_auto_derived = True
+        print(
+            f"  Note: concurrency_levels not set in {yaml_path.name}; "
+            f"auto-derived from output_tpm={config.project.output_tpm:,} "
+            f"@ ~{config.tps_estimate:.0f} TPS → {derived}"
+        )
 
     # Sustained throughput
     dur = raw.get("sustained_duration")
@@ -322,3 +355,53 @@ def _apply_yaml_overrides(yaml_path: Path, config: BenchmarkConfig) -> None:
         config.context_sizes = {
             str(k): int(v) for k, v in cs.items() if isinstance(v, int)
         }
+
+
+def derive_concurrency_levels(
+    output_tpm: int,
+    max_tokens: int,
+    tps_estimate: float = 150.0,
+) -> list[int]:
+    """
+    Auto-derive a sensible 3-point concurrency sweep from provisioned
+    output TPM.
+
+    Model
+    -----
+    Each in-flight request produces tokens at roughly ``tps_estimate``
+    tokens/second, so its sustained per-minute contribution is
+    ``tps_estimate * 60`` TPM. The number of concurrent requests the
+    quota can sustain is therefore::
+
+        capacity ≈ output_tpm / (tps_estimate * 60)
+
+    The returned sweep is ``[½·capacity, capacity, 2·capacity]`` so the
+    benchmark exercises **under-load**, **at-capacity**, and **over-capacity
+    stress** points. Values are clamped to a minimum of 1 and deduplicated.
+
+    The default ``tps_estimate`` of 150 is calibrated for modern
+    fast-generation models on dedicated infrastructure (PTU). Slower
+    deployments should override this in ``project.yaml`` with a lower
+    value (e.g. 60–100 for legacy / heavily-quantised models); blazing
+    fast deployments may need a higher value (e.g. 200+). When the
+    estimate is too low the sweep over-shoots the TPM quota and triggers
+    429 throttling at the upper concurrency level.
+
+    The ``max_tokens`` argument is currently unused in the formula
+    (capacity depends on TPM, not on per-request size for steady-state
+    sustained load), but is accepted for forward compatibility.
+    """
+    if output_tpm <= 0 or tps_estimate <= 0:
+        return [10, 50, 100]
+
+    tpm_per_request = tps_estimate * 60.0
+    capacity = max(1, round(output_tpm / tpm_per_request))
+
+    raw_levels = [max(1, capacity // 2), capacity, capacity * 2]
+    seen: set[int] = set()
+    deduped: list[int] = []
+    for x in raw_levels:
+        if x not in seen:
+            seen.add(x)
+            deduped.append(x)
+    return deduped

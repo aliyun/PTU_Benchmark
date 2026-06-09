@@ -9,10 +9,10 @@ Pair this project with any PTU deployment via `--compare-with` to produce
 side-by-side A/B numbers during a POC call:
 
 ```bash
-make compare A=projects/qwen3.6-plus-2026-04-02_100K_10K B=projects/token-api SCN="A B"
+make compare A=projects/qwen3.6-plus-2026-04-02_500K_100K B=projects/token-api SCN="A B"
 # ── or directly ──
 python -m ptu_benchmark \
-  --project projects/qwen3.6-plus-2026-04-02_100K_10K \
+  --project projects/qwen3.6-plus-2026-04-02_500K_100K \
   --compare-with projects/token-api \
   --scenarios A B --export
 ```
@@ -20,7 +20,7 @@ python -m ptu_benchmark \
 ## Output
 
 - A unified table per scenario (TTFT P50/P99, TPS, TPM, 429s/errors)
-- A `results/<ptu>_vs_<token-api>/comparison.csv` summary with `delta_pct` columns
+- A `results/<bundle>/<model-code>/metrics.csv` summary with `delta_pct` columns
 - '+' in the Δ column = the right-hand project wins (lower latency / higher throughput)
 
 ## Notes

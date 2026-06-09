@@ -1,4 +1,7 @@
+# ── Secrets ────────────────────────────────────────────
 .env
+
+# ── Python build artefacts ─────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
@@ -7,6 +10,10 @@ dist/
 build/
 .venv/
 venv/
-results/*.json
-results/*.csv
 .pytest_cache/
+
+# ── Benchmark results (never committed) ────────────────
+# Top-level dated result bundles
+results/
+# Per-project results (e.g. projects/my-ptu/results/)
+projects/*/results/

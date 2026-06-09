@@ -1,12 +1,11 @@
 # ──────────────────────────────────────────────
-# PTU Benchmark — Project: "test"
+# PTU Benchmark — Project: "ptu-benchmark"
 # ──────────────────────────────────────────────
-# Example project created from the Alibaba Cloud
-# Model Studio console deployment shown in the
-# reference screenshots.
+# Updated from the Alibaba Cloud Model Studio
+# console Scaling dialog (500 kTPM in / 100 kTPM out).
 
 # ── Service Identity ──────────────────────────────────────────
-service_name: "test"
+service_name: "ptu-benchmark"
 model_name:   "Qwen3.6-Plus-2026-04-02"
 model_code:   "qwen3.6-plus-2026-04-02"              # ← was PTU_MODEL_ID in root .env
 deployment_id: "qwen3.6-plus-2026-04-02-d1839645ee95"
@@ -15,19 +14,23 @@ deployment_id: "qwen3.6-plus-2026-04-02-d1839645ee95"
 billing_method: "Provisioned Throughput Unit / Pay-as-you-go"
 
 # ── Throughput Quota ──────────────────────────────────────────
-input_tpm:  100000     # 100 kTPM
-output_tpm: 10000      # 10 kTPM
+input_tpm:  500000     # 500 kTPM
+output_tpm: 100000     # 100 kTPM
 
 # ── Pricing ───────────────────────────────────────────────────
-input_unit_price:  0.12   # USD per kTPM*hour (input)
-output_unit_price: 0.72   # USD per kTPM*hour (output)
-hourly_price: 19.2        # USD per hour (total)
+input_unit_price:  0.12   # USD per kTPM*hour (input)  → 500 × 0.12 = $60/hr
+output_unit_price: 0.72   # USD per kTPM*hour (output) → 100 × 0.72 = $72/hr
+hourly_price: 132.0       # USD per hour (total)
 
 # ── Benchmark Tuning (per-project, was in root .env) ──────────
-concurrency_levels:
-  - 10
-  - 50
-  - 100
+# concurrency_levels omitted → auto-derived from output_tpm.
+# Observed per-request TPS on this deployment is ~200 (not the
+# 150 default), so we pin tps_estimate so the auto-derive yields
+# a sweep that fits inside the 100K output TPM quota:
+#   capacity = 100,000 / (200 × 60) ≈ 8 → sweep [4, 8, 16]
+# Without this override the default would be [12, 25, 50] which
+# overshoots the quota at the upper level and triggers 429s.
+tps_estimate: 200
 
 sustained_duration: 1800       # seconds (30 minutes)
 sustained_concurrency: 20
