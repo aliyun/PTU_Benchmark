@@ -15,7 +15,9 @@ venv/
 # ── IDE / tool artefacts ────────────────────────────────
 .qoder/
 
-# ── Benchmark reports (never committed) ──────────────
+# ── Benchmark results (never committed) ─────────────────
+# Top-level comparison results
+results/
 # Top-level dated report bundles
 reports/
 # Per-project results (e.g. projects/my-ptu/results/)
