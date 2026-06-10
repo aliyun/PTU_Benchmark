@@ -1,3 +1,0 @@
-- All scenario classes define class-level `name` (single-letter key) and `description` (human-readable label) attributes before implementing the abstract `run()` method.
-- Every scenario's `run()` method returns a `ScenarioResult` instance populated with a list of `SingleRequestResult` objects, enabling uniform aggregation and reporting.
-- Streaming response parsing follows a consistent pattern: track `first_token_time` on first content delta, count tokens per chunk, then compute TTFT (ms) and TPS (tokens / generation time) after stream completion.

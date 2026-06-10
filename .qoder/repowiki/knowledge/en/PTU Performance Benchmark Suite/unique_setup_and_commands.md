@@ -1,3 +1,0 @@
-- Setup requires copying `.env.example` to `.env` and filling `DASHSCOPE_API_KEY` and `PTU_MODEL_ID` before running benchmarks (`make setup` automates this).
-- Makefile provides granular targets: `make run-a` through `make run-e` for individual scenarios, `make run` for all scenarios with export, and `make test` for pytest execution.
-- Results are exported as timestamped JSON and CSV files into a `results/` directory when `--export` flag is used.

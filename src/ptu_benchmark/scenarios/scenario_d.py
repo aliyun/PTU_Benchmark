@@ -21,6 +21,7 @@ class ScenarioD(BaseScenario):
     """Peak burst test — all requests fired simultaneously."""
 
     name = "D"
+    display_name = "Peak Burst Resilience"
     description = "Peak Burst Test"
 
     def run(self) -> ScenarioResult:

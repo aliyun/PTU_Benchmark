@@ -30,6 +30,11 @@ input_unit_price:  0.0
 output_unit_price: 0.0
 hourly_price:      0.0
 
+# ── Token API per-token pricing (per million tokens) ──────────
+# Pay-per-use rates for breakeven analysis vs PTU fixed cost.
+token_input_price_per_m: 2.0      # price per million input tokens
+token_output_price_per_m: 6.0     # price per million output tokens
+
 # ── Benchmark Tuning ──────────────────────────────────────────
 # Use the same load profile as the PTU project so the A/B is fair.
 concurrency_levels:

@@ -1,0 +1,6 @@
+scenario,label,total,success,errors,rate_limited,ttft_p50_ms,ttft_p95_ms,ttft_p99_ms,tps_avg,tps_min,tps_max
+A,Single Request Baseline (TTFT + TPS),8,8,0,0,14476,30582,31511,207.5,78.2,321.3
+B,Concurrent Load (10/50/100 parallel requests),28,16,12,12,26802,30474,31444,172.0,152.9,202.3
+C,Sustained Throughput (30-minute window),842,627,215,214,39242,47695,52090,170.2,89.9,452.1
+D,Peak Burst Test,200,7,193,193,15406,21757,22073,568.5,358.5,847.1
+E,Long Context Test,9,9,0,0,100524,174744,179393,1565.1,944.8,2506.1

@@ -53,3 +53,26 @@ context_sizes:
   "32K":  32000
   "64K":  64000
   "128K": 128000
+
+# ── HTTP client ───────────────────────────────────────────────
+# Per-request HTTP timeout (seconds). Prevents a hung upstream from
+# stalling the benchmark indefinitely. Can also be overridden via
+# the PTU_REQUEST_TIMEOUT environment variable.
+# request_timeout: 120  # Optional: HTTP request timeout in seconds (default: 120)
+
+# ── Cost projection inputs (optional) ────────────────────────
+# daily_volume: 1000000        # Estimated daily total token volume
+# growth_rate: 0.1             # Monthly growth rate (10%)
+# input_ratio: 0.3             # Fraction of tokens that are input (30%)
+
+# ── Token API per-token pricing (for Token API projects only) ─
+# token_input_price_per_m: 2.0   # Price per million input tokens
+# token_output_price_per_m: 6.0  # Price per million output tokens
+
+# ── SLA Compliance Targets (optional — omit to skip SLA scoring) ─
+# sla_targets:
+#   availability: 0.999          # Minimum success rate (99.9%)
+#   ttft_p95_ms: 500             # Maximum P95 TTFT in milliseconds
+#   ttft_p99_ms: 2000            # Maximum P99 TTFT in milliseconds
+#   tps_minimum: 50              # Minimum average TPS sustained
+#   error_budget_pct: 0.1        # Maximum error rate percentage

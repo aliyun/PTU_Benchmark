@@ -55,6 +55,18 @@ class ProjectConfig:
     output_unit_price: float = 0.0   # $/kTPM·hour
     hourly_price: float = 0.0        # total USD/hour
 
+    # ── Token API per-token pricing (for pay-per-use projects) ────
+    token_input_price_per_m: float = 0.0   # price per million input tokens
+    token_output_price_per_m: float = 0.0  # price per million output tokens
+
+    # ── Cost projection inputs ────────────────────────────────────
+    daily_volume: int = 0              # estimated daily total token volume
+    growth_rate: float = 0.0           # monthly growth rate (0.1 = 10%)
+    input_ratio: float = 0.3           # fraction of tokens that are input
+
+    # ── SLA compliance targets (optional) ─────────────────────────
+    sla_targets: dict = field(default_factory=dict)
+
     @classmethod
     def from_yaml(cls, path: str | Path) -> ProjectConfig:
         """
@@ -95,6 +107,12 @@ class ProjectConfig:
             input_unit_price=float(raw.get("input_unit_price", 0.0)),
             output_unit_price=float(raw.get("output_unit_price", 0.0)),
             hourly_price=float(raw.get("hourly_price", 0.0)),
+            token_input_price_per_m=float(raw.get("token_input_price_per_m", 0.0)),
+            token_output_price_per_m=float(raw.get("token_output_price_per_m", 0.0)),
+            daily_volume=int(raw.get("daily_volume", 0)),
+            growth_rate=float(raw.get("growth_rate", 0.0)),
+            input_ratio=float(raw.get("input_ratio", 0.3)),
+            sla_targets=dict(raw.get("sla_targets") or {}),
         )
 
 
@@ -146,6 +164,18 @@ class BenchmarkConfig:
     concurrent_max_tokens: int = 512
     sustained_max_tokens: int = 1024
 
+    # ── HTTP client ─────────────────────────────────────────────────
+    # Total per-request timeout (seconds) for aiohttp sessions. Without
+    # this, a hung upstream connection can stall the entire benchmark
+    # indefinitely. Override per-project via project.yaml
+    # (``request_timeout: <int>``) or env var ``PTU_REQUEST_TIMEOUT``.
+    request_timeout: int = 120
+
+    # ── Cost projection (overridable via CLI) ─────────────────────
+    daily_volume: int = 0          # Daily total token volume for cost projections
+    growth_rate: float = 0.0       # Monthly growth rate (0.1 = 10%)
+    input_ratio: float = 0.3       # Fraction of tokens that are input
+
     # ─────────────────────────────────────────────────────────────────
     # Factory methods
     # ─────────────────────────────────────────────────────────────────
@@ -178,6 +208,7 @@ class BenchmarkConfig:
                 os.getenv("CONTEXT_SIZES", ""),
                 {"32K": 32_000, "64K": 64_000, "128K": 128_000},
             ),
+            request_timeout=int(os.getenv("PTU_REQUEST_TIMEOUT", "120")),
         )
 
     @classmethod
@@ -235,6 +266,7 @@ class BenchmarkConfig:
                 os.getenv("CONTEXT_SIZES", ""),
                 {"32K": 32_000, "64K": 64_000, "128K": 128_000},
             ),
+            request_timeout=int(os.getenv("PTU_REQUEST_TIMEOUT", "120")),
         )
 
         # ── Apply YAML benchmark overrides (if any) ──────────────────
@@ -355,6 +387,22 @@ def _apply_yaml_overrides(yaml_path: Path, config: BenchmarkConfig) -> None:
         config.context_sizes = {
             str(k): int(v) for k, v in cs.items() if isinstance(v, int)
         }
+
+    # Per-request timeout (seconds) for aiohttp sessions
+    rt = raw.get("request_timeout")
+    if isinstance(rt, int) and rt > 0:
+        config.request_timeout = rt
+
+    # ── Cost projection overrides ────────────────────────────────────
+    dv = raw.get("daily_volume")
+    if isinstance(dv, int) and dv > 0:
+        config.daily_volume = dv
+    gr = raw.get("growth_rate")
+    if isinstance(gr, (int, float)):
+        config.growth_rate = float(gr)
+    ir = raw.get("input_ratio")
+    if isinstance(ir, (int, float)) and 0 <= ir <= 1:
+        config.input_ratio = float(ir)
 
 
 def derive_concurrency_levels(

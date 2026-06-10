@@ -1,0 +1,6 @@
+scenario,token-api_ttft_p50_ms,ptu-benchmark_ttft_p50_ms,ttft_p50_delta_pct,token-api_ttft_p99_ms,ptu-benchmark_ttft_p99_ms,ttft_p99_delta_pct,token-api_tps_avg,ptu-benchmark_tps_avg,tps_delta_pct,token-api_tpm,ptu-benchmark_tpm,tpm_delta_pct,token-api_429s,ptu-benchmark_429s,token-api_errors,ptu-benchmark_errors
+A,13087,14476,-10.61,43556,31511,27.65,184.28,207.53,12.62,10059,12483,24.09,0,0,0,0
+B,29208,26802,8.24,40862,31444,23.05,170.40,171.99,0.94,339301,41430,-87.79,0,12,0,12
+C,39774,39242,1.34,98673,52090,47.21,170.23,170.21,-0.01,660655,1222671,85.07,0,214,5,215
+D,14089,15406,-9.35,24187,22073,8.74,524.07,568.47,8.47,318532,15265,-95.21,0,193,1,193
+E,74071,100524,-35.71,128729,179393,-39.36,1056.04,1565.10,48.21,17703,18077,2.11,0,0,0,0

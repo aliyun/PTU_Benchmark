@@ -24,6 +24,7 @@ class ScenarioB(BaseScenario):
     """Concurrent load benchmark at multiple concurrency levels."""
 
     name = "B"
+    display_name = "Concurrency Stress Test"
     description = "Concurrent Load (10/50/100 parallel requests)"
 
     def run(self) -> ScenarioResult:

@@ -107,6 +107,7 @@ Each project folder contains a `project.yaml` with deployment metadata:
 | `input_unit_price` | USD per kTPM*hour (input) | `0.12` |
 | `output_unit_price` | USD per kTPM*hour (output) | `0.72` |
 | `hourly_price` | Total USD per hour | `19.20` |
+| `request_timeout` | _Optional._ Per-request HTTP timeout in seconds (default `120`). Also overridable via `PTU_REQUEST_TIMEOUT` env var. | `120` |
 
 ### Benchmark Tuning in project.yaml
 
@@ -127,7 +128,26 @@ context_sizes:
   "32K":  32000
   "64K":  64000
   "128K": 128000
+
+# Per-request HTTP timeout (seconds). Optional; default 120.
+# Overridable globally via PTU_REQUEST_TIMEOUT env var.
+# request_timeout: 120
 ```
+
+#### SLA Targets (Optional)
+
+Define `sla_targets` in `project.yaml` to enable automated compliance assessment in the executive report:
+
+```yaml
+sla_targets:
+  availability: 0.999          # minimum success rate (99.9%)
+  ttft_p95_ms: 500             # TTFT P95 ceiling in milliseconds
+  ttft_p99_ms: 1000            # TTFT P99 ceiling in milliseconds
+  min_tps: 40                  # minimum acceptable tokens/second
+  error_budget: 0.01           # maximum allowed error rate (1%)
+```
+
+When configured, the executive report appends an **SLA Compliance** section with pass/fail per target and headroom analysis. If omitted, no SLA section is generated.
 
 #### Auto-derived concurrency levels
 
@@ -205,27 +225,55 @@ python -m ptu_benchmark [options]
 | `--version` | — | — | Print version and exit |
 | `--project PATH` | string | — | Project folder containing `project.yaml` (recommended) |
 | `--env PATH` | string | auto-detect | Path to a `.env` file (legacy mode) |
-| `--compare-with PATH` | string | — | Second project folder for A/B comparison |
-| `--scenarios KEYS...` | list | all (A B C D E) | Space-separated scenario keys to run |
+| `--compare-with PATH` | string | — | Second project folder for A/B comparison (overrides the default Token API baseline) |
+| `--no-compare` | — | — | Disable the implicit `projects/token-api` baseline that is auto-applied when `--project` is used |
+| `--no-customer-report` | — | — | Skip auto-generation of the customer-facing POC report (`customer_report.md`). Customer report is on by default in A/B compare mode |
+| `--scenarios KEYS...` | list | all (A B C D E) | Space-separated scenario keys to run (see table below) |
 | `--list` | — | — | Print available scenarios and exit |
 | `--export` | — | always on | Export results (implicit in project mode) |
-| `--output-dir DIR` | string | auto-named | Directory for exported files |
+| `--output-dir DIR` | string | auto-named | Directory for exported files (default: `reports/`) |
+| `--daily-volume TOKENS` | int | from `project.yaml` | Daily token volume for cost projection (overrides `project.yaml`) |
+| `--growth-rate RATE` | float | `0.0` | Monthly growth rate as decimal (e.g., `0.1` for 10%) |
+| `--no-cost-report` | — | — | Skip standalone cost analysis report generation |
+
+#### Scenario Keys & Display Names
+
+The CLI accepts the single-letter keys; reports render the human-readable
+display name alongside the key (e.g. `Scenario A — Latency Baseline`).
+
+| Key | Display Name | Description |
+|-----|--------------|-------------|
+| `A` | Latency Baseline | Single-request baseline (TTFT + TPS) |
+| `B` | Concurrency Stress Test | Concurrent load at 10 / 50 / 100 parallel requests |
+| `C` | Sustained Throughput Test | Sustained TPM over a 30-minute window |
+| `D` | Peak Burst Resilience | Sudden simultaneous burst (no warm-up) |
+| `E` | Long Context Performance | Long-context inputs (32K / 64K / 128K tokens) |
+
+Examples:
+
+```bash
+# Quick demo: latency + concurrency + burst
+python -m ptu_benchmark --project projects/my-ptu --scenarios A B D
+
+# Long-context only (Long Context Performance)
+python -m ptu_benchmark --project projects/my-ptu --scenarios E
+```
 
 ### Output Directory Naming
 
 When `--output-dir` is not specified, results are written to a **dated, auto-incremented folder**:
 
 ```
-{base}/results/{YYYYMMDD}_{model_name}_{NNN}/results/
+reports/{YYYYMMDD}_{model_name}_{NNN}/
 ```
 
 - `YYYYMMDD` — current UTC date
 - `model_name` — from `project.yaml` or `PTU_MODEL_ID`
 - `NNN` — 3-digit sequence number (auto-increments if folder exists)
 
-Example: `results/20260605_Qwen3.6-Plus-2026-04-02_001/results/`
+Example: `reports/20260605_Qwen3.6-Plus-2026-04-02_001/`
 
-For A/B comparisons: `results/20260605_ModelA_vs_ModelB_001/results/`
+For A/B comparisons the same naming applies (no `_vs_` in folder name): `reports/20260605_Qwen3.6-Plus-2026-04-02_001/`
 
 ---
 
@@ -240,6 +288,7 @@ Below is the full list of environment variables recognised by the tool, grouped 
 | `DASHSCOPE_API_KEY` | Yes | — |
 | `PTU_MODEL_ID` | Yes (or set in `project.yaml` `model_code`) | — |
 | `BASE_URL` | No | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` |
+| `PTU_REQUEST_TIMEOUT` | No | `120` (seconds) — per-request HTTP timeout for aiohttp sessions |
 
 ### Scenario Tuning
 
@@ -277,36 +326,46 @@ python -m ptu_benchmark --env /path/to/.env --scenarios A B --export
 ### Using Make Shortcuts
 
 ```bash
-make run          # all scenarios (reports auto-generated)
-make run-a        # Scenario A
-make run-b        # Scenario B
-make run-c        # Scenario C
-make run-d        # Scenario D
-make run-e        # Scenario E
-make compare      # A/B comparison (PTU vs Token API)
-make list         # show available scenarios
+make run               # all scenarios with A/B comparison (reports auto-generated)
+make run-a             # Scenario A
+make run-b             # Scenario B
+make run-c             # Scenario C
+make run-d             # Scenario D
+make run-e             # Scenario E
+make compare           # Alias for `run` (A/B comparison)
+make list              # show available scenarios
+```
+
+### Development Targets
+
+```bash
+make test              # unit tests only (excludes integration tests)
+make test-integration  # integration tests (scenarios + workflow)
+make lint              # ruff check src/ tests/
+make format            # ruff format src/ tests/
+make typecheck         # mypy src/ptu_benchmark/
 ```
 
 ---
 
 ## Result Output & Reports
 
-Every benchmark run produces a **dated result bundle** containing four types of output:
+Every benchmark run produces a **dated report bundle** containing four types of output:
 
 ### Folder Structure
 
 ```
-results/
+reports/
   20260605_Qwen3.6-Plus-2026-04-02_001/
-    results/
+    data/                                      ← raw benchmark artefacts
       benchmark_results_20260605T120000Z.json
       benchmark_summary.csv
-      executive_report.md
-      figures/
-        ttft_percentiles.png
-        tps_throughput.png
-        error_rates.png
-      business_report.docx
+    figures/
+      ttft_percentiles.png
+      tps_throughput.png
+      error_rates.png
+    executive_report.md
+    business_report.docx
 ```
 
 ### Files
@@ -315,9 +374,11 @@ results/
 |------|--------|----------|-------------|
 | `benchmark_results_*.json` | JSON | Engineers | Full per-request timing data for every scenario |
 | `benchmark_summary.csv` | CSV | Analysts | Aggregated statistics (P50/P95/P99, TPS, error rates) |
-| `executive_report.md` | Markdown + PNG | Technical teams | Deep technical report with per-scenario breakdowns, statistical tables, matplotlib charts (TTFT percentiles, TPS throughput, error rates), comparison deltas, and auto-generated findings |
+| `executive_report.md` | Markdown + PNG | Technical teams | Deep technical report with a **Verdict by Scenario** dashboard, per-scenario breakdowns, statistical tables, matplotlib charts (TTFT percentiles, TPS throughput, error rates), comparison deltas, and auto-generated findings |
 | `figures/*.png` | PNG images | Both | Matplotlib-generated charts embedded in the executive report |
 | `business_report.docx` | DOCX (Word) | Decision makers | Professional one-page summary with headline metrics, explanations of what each metric means, scenario overview, key takeaways, and cost |
+| `customer_report.md` | Markdown | Customers | Auto-populated POC report (A/B compare mode only). Suppress with `--no-customer-report`. |
+| `cost_analysis.md` | Markdown | Decision makers | Breakeven analysis and 12-month cost projection (PTU vs Token API). Suppress with `--no-cost-report`. |
 
 ### JSON Export
 
@@ -363,6 +424,7 @@ B,Concurrent Load (10/50/100 parallel requests),160,158,2,0,420,890,1200,55.3,32
 
 The deep technical report (`executive_report.md`) includes:
 
+- **Verdict by Scenario dashboard** — at-a-glance winner per scenario (PTU / Token API / TIE), based on the headline metric for each scenario
 - **Summary table** — all scenarios at a glance with key metrics
 - **Performance overview charts** — matplotlib-generated TTFT percentile bars, TPS throughput with error bars, and request outcome breakdowns
 - **Per-scenario details** — TTFT percentile tables (P50/P90/P95/P99/min/max), throughput statistics (avg/median/min/max/std dev), token counts
@@ -379,6 +441,23 @@ The one-page business report (`business_report.docx`) is a professionally format
 - **Key takeaways** — reliability, rate limiting, performance, vs-baseline — with explanations
 - **Cost summary** — hourly/daily/monthly pricing (from `project.yaml`)
 
+### Cost Analysis Report
+
+When running in A/B compare mode, a standalone `cost_analysis.md` is generated with:
+
+- **Breakeven analysis** — at what daily token volume PTU becomes cheaper than Token API
+- **12-month cost projection** — with optional growth rate (`--growth-rate`)
+- **ROI summary** — cumulative savings over the projection period
+
+Override the daily volume assumption with `--daily-volume TOKENS`. Suppress entirely with `--no-cost-report`.
+
+### SLA Compliance (Optional)
+
+When `sla_targets` is defined in `project.yaml`, the executive report includes an additional compliance section:
+
+- **Per-target pass/fail** — availability, TTFT P95/P99, minimum TPS, error budget
+- **Headroom analysis** — how much margin exists above/below each threshold
+
 ---
 
 ## Comparing Token API vs PTU
@@ -394,22 +473,27 @@ python -m ptu_benchmark \
   --scenarios A B D
 ```
 
-This produces a dated comparison bundle under the subject model's code:
+This produces a dated comparison bundle:
 
 ```
-results/
-  20260605_PtuModel_vs_TokenApi_001/
-    results/
-      model-code/                              ← model report folder
-        executive_report.md                    ← ⭐ flagship A/B comparison
-        business_report.docx                   ← ⭐ DOCX twin
-        metrics.csv                            ← side-by-side numbers
-        subject_only_executive_report.md       ← PTU-only deep dive
-        subject_only_business_report.docx      ← PTU-only DOCX
-        figures/
-          comparison_vs_ttft_tps.png           ← side-by-side comparison charts
-        my-ptu/                                ← subject raw data
-        token-api/                             ← baseline raw data
+reports/
+  20260605_Qwen3.6-Plus-2026-04-02_001/
+    PTU/                                     ← raw subject data
+      benchmark_results_*.json
+      benchmark_summary.csv
+    Token_API/                               ← raw baseline data
+      benchmark_results_*.json
+      benchmark_summary.csv
+    figures/
+      comparison_vs_ttft_tps.png             ← side-by-side comparison charts
+      comparison_ttft_percentiles.png
+      comparison_tps_throughput.png
+      comparison_error_rates.png
+    executive_report.md                      ← ⭐ flagship A/B comparison
+    business_report.docx                     ← ⭐ DOCX twin
+    customer_report.md                       ← customer-facing POC report
+    cost_analysis.md                         ← breakeven & cost projection
+    metrics.csv                              ← side-by-side numbers
 ```
 
 Or using Make:
@@ -485,11 +569,11 @@ The package is not installed. Run:
 pip install -e .
 ```
 
-### Results Folder Keeps Growing
+### Reports Folder Keeps Growing
 
 Each run creates a new dated folder with an auto-incrementing sequence number. Old runs are never overwritten. To clean up:
 
 ```bash
-# Remove all results older than 30 days
-find results/ -maxdepth 1 -type d -mtime +30 -exec rm -rf {} +
+# Remove all reports older than 30 days
+find reports/ -maxdepth 1 -type d -mtime +30 -exec rm -rf {} +
 ```

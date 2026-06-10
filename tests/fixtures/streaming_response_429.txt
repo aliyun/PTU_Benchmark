@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "RateLimitExceeded",
+    "message": "Rate limit exceeded for tokens-per-minute. Please retry after 60 seconds.",
+    "type": "throttling_error",
+    "status": 429
+  }
+}

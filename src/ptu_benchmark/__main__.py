@@ -31,12 +31,15 @@ from pathlib import Path
 from ptu_benchmark import __version__
 from ptu_benchmark.config import BenchmarkConfig
 from ptu_benchmark.reporter import (
+    ProgressBar,
     build_result_folder,
     export_business_report,
     export_comparison_csv,
     export_csv_summary,
     export_executive_report,
     export_json,
+    generate_cost_report,
+    generate_customer_report,
     print_header,
     print_project_comparison,
     print_scenario_summary,
@@ -99,6 +102,12 @@ def build_parser() -> argparse.ArgumentParser:
              "that is auto-applied when --project is used. Use this to benchmark "
              "a single project without an A/B baseline.",
     )
+    parser.add_argument(
+        "--no-customer-report",
+        action="store_true",
+        help="Skip auto-generation of the customer-facing POC report "
+             "(customer_report.md). Enabled by default in compare mode.",
+    )
 
     # ── Run control ──────────────────────────────────────────────
 
@@ -122,9 +131,32 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="results",
-        help="Directory for exported result files (default: results/)",
+        default="reports",
+        help="Directory for exported result files (default: reports/)",
     )
+
+    # ── Cost analysis options ──────────────────────────────────────
+
+    parser.add_argument(
+        "--daily-volume",
+        type=int,
+        default=None,
+        metavar="TOKENS",
+        help="Daily token volume for cost projection (overrides project.yaml)",
+    )
+    parser.add_argument(
+        "--growth-rate",
+        type=float,
+        default=None,
+        metavar="RATE",
+        help="Monthly growth rate as decimal (e.g., 0.1 for 10%%)",
+    )
+    parser.add_argument(
+        "--no-cost-report",
+        action="store_true",
+        help="Skip standalone cost analysis report generation",
+    )
+
     return parser
 
 
@@ -132,7 +164,11 @@ def list_scenarios() -> None:
     """Print all available scenarios."""
     print_header("Available Benchmark Scenarios")
     for key, cls in SCENARIOS.items():
-        print(f"  {key}  {cls.description}")
+        display = getattr(cls, "display_name", "") or ""
+        if display:
+            print(f"  {key}  {display} — {cls.description}")
+        else:
+            print(f"  {key}  {cls.description}")
 
 
 def _load_project_config(path_str: str) -> tuple[BenchmarkConfig, Path]:
@@ -182,6 +218,8 @@ def run_benchmarks(
     generate_reports: bool = True,
     executive_filename: str = "executive_report.md",
     business_filename: str = "business_report.docx",
+    progress: ProgressBar | None = None,
+    log_file=None,
 ) -> list[ScenarioResult]:
     """Run the selected scenarios for one config and optionally export results.
 
@@ -198,48 +236,75 @@ def run_benchmarks(
         (useful for the baseline arm of an A/B run where only raw data
         is needed alongside the comparison report).
     executive_filename, business_filename
-        Override the rendered report filenames. Defaults to
-        ``executive_report.md`` / ``business_report.docx``. In an A/B
-        run, the subject's standalone reports are written under
-        ``subject_only_*`` names so the canonical filenames belong to
-        the flagship A/B comparison report instead.
+        Override the rendered report filenames.
+    progress
+        Optional :class:`ProgressBar` shared with the caller. When
+        provided, scenario steps advance this bar; otherwise a
+        local one is constructed (and finished at the end).
+    log_file
+        Optional open file handle. When provided, every ``print()``
+        emitted during scenario execution is redirected to it so the
+        terminal only shows the live progress bar.
     """
     keys = scenario_keys or list(SCENARIOS.keys())
     all_results: list[ScenarioResult] = []
 
-    print_header(f"PTU Benchmark Suite v{__version__}")
-    _print_project_banner(config)
-    print(f"  Running:    {', '.join(keys)}")
+    own_progress = progress is None
+    if progress is None:
+        progress = ProgressBar(total_steps=len(keys), log_file=log_file)
+
+    # Banner — written to log only (terminal is reserved for the bar).
+    with progress.capture_stdout():
+        print_header(f"PTU Benchmark Suite v{__version__}")
+        _print_project_banner(config)
+        print(f"  Running:    {', '.join(keys)}")
 
     for key in keys:
         scenario_cls = SCENARIOS[key]
-        print_header(f"Scenario {key}: {scenario_cls.description}", char="-")
-        scenario = scenario_cls(config)
-        result = scenario.run()
-        print_scenario_summary(result)
-        all_results.append(result)
+        display = getattr(scenario_cls, "display_name", "") or ""
+        label = f"Scenario {key} ({display})" if display else f"Scenario {key}"
+
+        progress.start_step(label)
+        success = False
+        try:
+            with progress.capture_stdout():
+                header = (
+                    f"Scenario {key} — {display}: {scenario_cls.description}"
+                    if display
+                    else f"Scenario {key}: {scenario_cls.description}"
+                )
+                print_header(header, char="-")
+                scenario = scenario_cls(config)
+                result = scenario.run()
+                print_scenario_summary(result)
+                all_results.append(result)
+            success = True
+        finally:
+            progress.end_step(success=success, label=label)
 
     if export and all_results:
-        json_path = export_json(all_results, output_dir=output_dir)
-        csv_path = export_csv_summary(all_results, output_dir=output_dir)
+        with progress.capture_stdout():
+            json_path = export_json(all_results, output_dir=output_dir)
+            csv_path = export_csv_summary(all_results, output_dir=output_dir)
+            print(f"\n  Results exported:")
+            print(f"    JSON              → {json_path}")
+            print(f"    CSV               → {csv_path}")
 
-        print(f"\n  Results exported:")
-        print(f"    JSON              → {json_path}")
-        print(f"    CSV               → {csv_path}")
+            if generate_reports:
+                target = report_dir if report_dir is not None else output_dir
+                exec_path = export_executive_report(
+                    all_results, output_dir=target, config=config,
+                    filename=executive_filename,
+                )
+                biz_path = export_business_report(
+                    all_results, output_dir=target, config=config,
+                    filename=business_filename,
+                )
+                print(f"    Executive Report  → {exec_path}")
+                print(f"    Business Report   → {biz_path}")
 
-        if generate_reports:
-            target = report_dir if report_dir is not None else output_dir
-            # Generate executive (long-form) and one-page business reports
-            exec_path = export_executive_report(
-                all_results, output_dir=target, config=config,
-                filename=executive_filename,
-            )
-            biz_path = export_business_report(
-                all_results, output_dir=target, config=config,
-                filename=business_filename,
-            )
-            print(f"    Executive Report  → {exec_path}")
-            print(f"    Business Report   → {biz_path}")
+    if own_progress:
+        progress.finish()
 
     return all_results
 
@@ -258,133 +323,178 @@ def run_compare(
     dir_b: Path,
     scenario_keys: list[str] | None,
     output_dir: str,
+    customer_report: bool = True,
+    cost_report: bool = True,
+    daily_volume: int | None = None,
+    growth_rate: float | None = None,
+    log_file=None,
 ) -> None:
     """
     Run the same scenarios against two projects and emit reports.
 
     Layout (A = ``--project`` = subject, B = ``--compare-with`` = baseline):
 
-        results/<bundle>/results/
-        └── <subject_model_code>/                ← model report folder
-            ├── executive_report.md             (flagship A/B comparison)
-            ├── business_report.docx            (flagship A/B DOCX)
-            ├── metrics.csv                     (side-by-side raw numbers)
-            ├── subject_only_executive_report.md  (PTU-only deep dive)
-            ├── subject_only_business_report.docx (PTU-only DOCX)
-            ├── figures/                        (own + comparison-prefixed)
-            ├── <dir_a.name>/                   ← raw subject data only
-            └── <dir_b.name>/                   ← raw baseline data only
+        reports/<bundle>/
+        ├── PTU/                        ← raw subject data
+        │   ├── benchmark_results_*.json
+        │   └── benchmark_summary.csv
+        ├── Token_API/                  ← raw baseline data
+        │   ├── benchmark_results_*.json
+        │   └── benchmark_summary.csv
+        ├── figures/                    ← all charts
+        ├── executive_report.md         ← flagship A/B comparison
+        ├── business_report.docx        ← flagship A/B DOCX
+        ├── customer_report.md          ← customer-facing report
+        ├── cost_analysis.md            ← cost analysis
+        ├── metrics.csv                 ← side-by-side raw numbers
+        └── benchmark.log               ← full verbose execution log
     """
     keys = scenario_keys or list(SCENARIOS.keys())
     bundle = Path(output_dir)
     bundle.mkdir(parents=True, exist_ok=True)
 
-    # Use results/ subfolder if it exists (dated bundle layout)
-    results_sub = bundle / "results"
-    if results_sub.exists():
-        base = results_sub
-    else:
-        base = bundle
-
-    # ── Model folder name (subject's model_code) ──────────────────
-    # Both projects often run on the same underlying model; group all
-    # rendered reports under the subject's model_code so the dated
-    # bundle is organized by model rather than by quota tier.
-    subject_model_code = (
-        (config_a.project.model_code if config_a.project else "")
-        or config_a.model_id
-        or dir_a.name
-    )
-    model_dir = base / subject_model_code
-    model_dir.mkdir(parents=True, exist_ok=True)
-
-    # Raw-data subfolders live under the model folder.
-    sub_a = model_dir / dir_a.name  # subject (PTU) raw data
-    sub_b = model_dir / dir_b.name  # baseline (Token API) raw data
+    # Role-based subfolders for raw data
+    ptu_dir = bundle / "PTU"
+    token_dir = bundle / "Token_API"
 
     print_header(f"A/B Run — {dir_a.name}  vs  {dir_b.name}")
     print(f"  Scenarios:    {', '.join(keys)}")
     print(f"  Bundle:       {bundle}")
-    print(f"  Model folder: {model_dir}")
+    if log_file is not None:
+        log_path = getattr(log_file, "name", "")
+        if log_path:
+            print(f"  Log file:     {log_path}")
+    print()
 
-    # ── Run A (subject) — raw data → sub_a, reports → model_dir ──
-    # Use subject_only_* filenames so the canonical names remain free
-    # for the flagship A/B comparison reports.
-    print_header(f"[A] {dir_a.name}", char="-")
+    # Shared progress bar covering both arms (A then B).
+    progress = ProgressBar(
+        total_steps=len(keys) * 2,
+        log_file=log_file,
+    )
+
+    # ── Run A (subject) — raw data → PTU/ ─────────────────────────
+    progress.log(f"\n=== [A] {dir_a.name} ===")
     results_a = run_benchmarks(
         config=config_a,
         scenario_keys=keys,
         export=True,
-        output_dir=str(sub_a),
-        report_dir=str(model_dir),
-        executive_filename="subject_only_executive_report.md",
-        business_filename="subject_only_business_report.docx",
+        output_dir=str(ptu_dir),
+        report_dir=str(bundle),
+        generate_reports=False,
+        progress=progress,
+        log_file=log_file,
     )
 
-    # ── Run B (baseline) — raw data only, no standalone reports ──
-    print_header(f"[B] {dir_b.name}", char="-")
+    # ── Run B (baseline) — raw data → Token_API/ ─────────────────
+    progress.log(f"\n=== [B] {dir_b.name} ===")
     results_b = run_benchmarks(
         config=config_b,
         scenario_keys=keys,
         export=True,
-        output_dir=str(sub_b),
+        output_dir=str(token_dir),
         generate_reports=False,
+        progress=progress,
+        log_file=log_file,
     )
+
+    # All scenarios complete — commit a final bar line in scrollback.
+    progress.finish()
 
     name_a = _project_label(config_a, dir_a)
     name_b = _project_label(config_b, dir_b)
-    print_project_comparison(name_a, results_a, name_b, results_b)
 
-    # ── Export comparison files into the model folder ────────────
-    # Subject = A (PTU/--project), Baseline = B (Token API/--compare-with).
-    # The "comparison_" chart prefix avoids PNG name collisions with
-    # the subject's standalone charts in the same figures/ folder.
-    # These are the CANONICAL reports — they get the unprefixed filenames.
-    cmp_path = export_comparison_csv(
-        name_b, results_b, name_a, results_a,
-        output_dir=model_dir,
-        filename="metrics.csv",
-    )
+    # Comparison table goes to log (terminal already shows progress
+    # bar history); summary lines below give the user the final view.
+    with progress.capture_stdout():
+        print_project_comparison(name_a, results_a, name_b, results_b)
 
-    # Executive comparison report (long-form) — THE flagship deliverable
-    exec_cmp_path = export_executive_report(
-        results=results_a,
-        output_dir=model_dir,
-        config=config_a,
-        compare_results=results_b,
-        compare_config=config_b,
-        compare_name=name_b,
-        primary_name=name_a,
-        filename="executive_report.md",
-        chart_prefix="comparison_",
-    )
+    # ── Report generation phase ──────────────────────────────────
+    progress.info("Generating reports...")
 
-    # One-page business comparison report
-    biz_cmp_path = export_business_report(
-        results=results_a,
-        output_dir=model_dir,
-        config=config_a,
-        compare_results=results_b,
-        compare_config=config_b,
-        compare_name=name_b,
-        primary_name=name_a,
-        filename="business_report.docx",
-    )
+    with progress.capture_stdout():
+        cmp_path = export_comparison_csv(
+            name_b, results_b, name_a, results_a,
+            output_dir=bundle,
+            filename="metrics.csv",
+        )
+    progress.info(f"  ✓ Metrics CSV       → {cmp_path}")
 
-    # ── Final summary ──────────────────────────────────────────
+    with progress.capture_stdout():
+        exec_cmp_path = export_executive_report(
+            results=results_a,
+            output_dir=bundle,
+            config=config_a,
+            compare_results=results_b,
+            compare_config=config_b,
+            compare_name=name_b,
+            primary_name=name_a,
+            filename="executive_report.md",
+            chart_prefix="comparison_",
+        )
+    progress.info(f"  ✓ Executive Report  → {exec_cmp_path}")
+
+    with progress.capture_stdout():
+        biz_cmp_path = export_business_report(
+            results=results_a,
+            output_dir=bundle,
+            config=config_a,
+            compare_results=results_b,
+            compare_config=config_b,
+            compare_name=name_b,
+            primary_name=name_a,
+            filename="business_report.docx",
+        )
+    progress.info(f"  ✓ Business Report   → {biz_cmp_path}")
+
+    customer_path: Path | None = None
+    if customer_report:
+        with progress.capture_stdout():
+            customer_path = generate_customer_report(
+                subject_results=results_a,
+                baseline_results=results_b,
+                subject_config=config_a,
+                baseline_config=config_b,
+                output_dir=bundle,
+            )
+        progress.info(f"  ✓ Customer Report   → {customer_path}")
+
+    cost_path: Path | None = None
+    if cost_report:
+        vol = daily_volume or config_a.daily_volume
+        if vol and vol > 0:
+            gr = growth_rate if growth_rate is not None else config_a.growth_rate
+            ir = config_a.input_ratio
+            with progress.capture_stdout():
+                cost_path = generate_cost_report(
+                    subject_config=config_a,
+                    baseline_config=config_b,
+                    daily_volume=vol,
+                    output_dir=bundle,
+                    growth_rate=gr,
+                    input_ratio=ir,
+                    baseline_results=results_b,
+                )
+            progress.info(f"  ✓ Cost Analysis     → {cost_path}")
+
+    # ── Final terminal summary ──────────────────────────────────
     print_header("Reports", char="=")
-    print(f"  Model folder                     → {model_dir}/")
+    print(f"  Bundle                           → {bundle}/")
     print()
     print(f"  ⭐ Executive Report (A/B full)   → {exec_cmp_path}")
     print(f"  ⭐ Business Report  (A/B full)   → {biz_cmp_path}")
+    if customer_path is not None:
+        print(f"  ⭐ Customer POC Report           → {customer_path}")
+    if cost_path is not None:
+        print(f"  ⭐ Cost Analysis                 → {cost_path}")
     print(f"     Metrics CSV                   → {cmp_path}")
     print()
-    print(f"     Subject-only deep dive        → {model_dir}/subject_only_executive_report.md")
-    print(f"     Subject-only DOCX             → {model_dir}/subject_only_business_report.docx")
-    print()
     print(f"  Raw data:")
-    print(f"     A — {name_a:<28} → {sub_a}/")
-    print(f"     B — {name_b:<28} → {sub_b}/")
+    print(f"     A — {name_a:<28} → {ptu_dir}/")
+    print(f"     B — {name_b:<28} → {token_dir}/")
+    if log_file is not None:
+        log_path = getattr(log_file, "name", "")
+        if log_path:
+            print(f"\n  Full execution log               → {log_path}")
 
 
 def main() -> None:
@@ -443,55 +553,52 @@ def main() -> None:
                     print(f"  - {err}")
                 sys.exit(1)
 
-        # Build dated result folder: {date}_{modelA}_vs_{modelB}_{NNN}/results
-        if args.output_dir == "results":
+        # Build dated report folder: {date}_{model}_{NNN}
+        if args.output_dir == "reports":
             model_a_name = (config_a.project.model_name if config_a.project
                             else config_a.model_id or dir_a.name)
-            model_b_name = (config_b.project.model_name if config_b.project
-                            else config_b.model_id or dir_b.name)
-            results_dir = build_result_folder(
-                "results", model_a_name, compare_with=model_b_name,
+            bundle_dir = build_result_folder(
+                "reports", model_a_name,
             )
-            args.output_dir = str(results_dir.parent)  # bundle dir (parent of results/)
+            args.output_dir = str(bundle_dir)
         else:
-            # User-specified dir: create results/ inside it
-            results_sub = Path(args.output_dir) / "results"
-            results_sub.mkdir(parents=True, exist_ok=True)
-            args.output_dir = str(results_sub.parent)
+            # User-specified dir: use it directly
+            Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-        run_compare(
-            config_a=config_a, dir_a=dir_a,
-            config_b=config_b, dir_b=dir_b,
-            scenario_keys=args.scenarios,
-            output_dir=args.output_dir,
-        )
+        log_path = Path(args.output_dir) / "benchmark.log"
+        with open(log_path, "w", encoding="utf-8") as log_handle:
+            run_compare(
+                config_a=config_a, dir_a=dir_a,
+                config_b=config_b, dir_b=dir_b,
+                scenario_keys=args.scenarios,
+                output_dir=args.output_dir,
+                customer_report=not args.no_customer_report,
+                cost_report=not args.no_cost_report,
+                daily_volume=args.daily_volume,
+                growth_rate=args.growth_rate,
+                log_file=log_handle,
+            )
         return
 
     # ── Single-project / .env mode ────────────────────────────────────
     if args.project:
         config, project_dir = _load_project_config(args.project)
-        if args.output_dir == "results":
+        if args.output_dir == "reports":
             model_name = (config.project.model_name if config.project
                           else config.model_id or project_dir.name)
-            results_dir = build_result_folder(
-                project_dir / "results", model_name,
-            )
-            args.output_dir = str(results_dir)
+            bundle_dir = build_result_folder("reports", model_name)
+            args.output_dir = str(bundle_dir)
         else:
-            # User-specified: create results/ subfolder inside
-            results_sub = Path(args.output_dir) / "results"
-            results_sub.mkdir(parents=True, exist_ok=True)
-            args.output_dir = str(results_sub)
+            # User-specified: use it directly
+            Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     else:
         config = BenchmarkConfig.from_env(args.env)
-        if args.output_dir == "results":
+        if args.output_dir == "reports":
             model_name = config.model_id or "benchmark"
-            results_dir = build_result_folder("results", model_name)
-            args.output_dir = str(results_dir)
+            bundle_dir = build_result_folder("reports", model_name)
+            args.output_dir = str(bundle_dir)
         else:
-            results_sub = Path(args.output_dir) / "results"
-            results_sub.mkdir(parents=True, exist_ok=True)
-            args.output_dir = str(results_sub)
+            Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     errors = config.validate()
     if errors:
@@ -505,12 +612,28 @@ def main() -> None:
             print("  python -m ptu_benchmark --project projects/qwen3.6-plus-2026-04-02_500K_100K")
         sys.exit(1)
 
-    run_benchmarks(
-        config=config,
-        scenario_keys=args.scenarios,
-        export=True,  # always export reports
-        output_dir=args.output_dir,
-    )
+    keys = args.scenarios or list(SCENARIOS.keys())
+    log_path = Path(args.output_dir) / "benchmark.log"
+    with open(log_path, "w", encoding="utf-8") as log_handle:
+        progress = ProgressBar(total_steps=len(keys), log_file=log_handle)
+        print_header(f"PTU Benchmark Suite v{__version__}")
+        _print_project_banner(config)
+        print(f"  Scenarios:  {', '.join(keys)}")
+        print(f"  Bundle:     {args.output_dir}")
+        print(f"  Log file:   {log_path}\n")
+
+        run_benchmarks(
+            config=config,
+            scenario_keys=keys,
+            export=True,  # always export reports
+            output_dir=str(Path(args.output_dir) / "data"),
+            report_dir=args.output_dir,
+            progress=progress,
+            log_file=log_handle,
+        )
+        progress.finish()
+        print(f"\n  Bundle: {args.output_dir}/")
+        print(f"  Log:    {log_path}")
 
 
 if __name__ == "__main__":

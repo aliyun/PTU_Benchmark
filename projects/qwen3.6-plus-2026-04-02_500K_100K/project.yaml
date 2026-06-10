@@ -8,7 +8,7 @@
 service_name: "ptu-benchmark"
 model_name:   "Qwen3.6-Plus-2026-04-02"
 model_code:   "qwen3.6-plus-2026-04-02"              # ← was PTU_MODEL_ID in root .env
-deployment_id: "qwen3.6-plus-2026-04-02-d1839645ee95"
+deployment_id: "qwen3.6-plus-2026-04-02-1a33e92c762e"
 
 # ── Billing ───────────────────────────────────────────────────
 billing_method: "Provisioned Throughput Unit / Pay-as-you-go"
@@ -40,3 +40,11 @@ context_sizes:
   "32K":  32000
   "64K":  64000
   "128K": 128000
+
+# ── SLA Compliance Targets ──────────────────────────────────
+sla_targets:
+  availability: 0.995            # 99.5% success rate
+  ttft_p95_ms: 800               # P95 TTFT under 800ms
+  ttft_p99_ms: 3000              # P99 TTFT under 3s
+  tps_minimum: 80                # Minimum 80 TPS sustained
+  error_budget_pct: 1.0          # Max 1% error rate

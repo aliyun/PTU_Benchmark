@@ -23,6 +23,7 @@ class ScenarioC(BaseScenario):
     """Sustained throughput benchmark over a long time window."""
 
     name = "C"
+    display_name = "Sustained Throughput Test"
     description = "Sustained Throughput (30-minute window)"
 
     def run(self) -> ScenarioResult:
@@ -47,12 +48,15 @@ class ScenarioC(BaseScenario):
         headers = self._build_headers()
 
         connector = aiohttp.TCPConnector(limit=concurrency + 10)
+        timeout = aiohttp.ClientTimeout(
+            total=self.config.request_timeout, connect=10, sock_read=60
+        )
         all_results: list[SingleRequestResult] = []
         start_time = time.time()
         request_counter = 0
         deadline = start_time + duration
 
-        async with aiohttp.ClientSession(connector=connector) as session:
+        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
 
             async def _worker() -> None:
                 """
@@ -113,8 +117,10 @@ class ScenarioC(BaseScenario):
                 # Drain the reporter task without raising
                 try:
                     await reporter
-                except (asyncio.CancelledError, Exception):
-                    pass
+                except asyncio.CancelledError:
+                    pass  # Expected during shutdown
+                except Exception as e:
+                    print(f"  [warn] Reporter task error (ignored): {type(e).__name__}: {e}")
 
         # Final summary
         elapsed = time.time() - start_time

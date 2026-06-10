@@ -1,1 +1,0 @@
-Benchmark suite for measuring Alibaba Cloud Model Studio PTU performance across five load scenarios with streaming LLM API calls.

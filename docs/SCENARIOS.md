@@ -6,16 +6,18 @@
 
 ## Table of Contents
 
-1. [Scenario A — Single Request Baseline](#scenario-a--single-request-baseline)
-2. [Scenario B — Concurrent Load](#scenario-b--concurrent-load)
-3. [Scenario C — Sustained Throughput](#scenario-c--sustained-throughput)
-4. [Scenario D — Peak Burst Test](#scenario-d--peak-burst-test)
-5. [Scenario E — Long Context Test](#scenario-e--long-context-test)
+1. [Scenario A — Latency Baseline](#scenario-a--latency-baseline)
+2. [Scenario B — Concurrency Stress Test](#scenario-b--concurrency-stress-test)
+3. [Scenario C — Sustained Throughput Test](#scenario-c--sustained-throughput-test)
+4. [Scenario D — Peak Burst Resilience](#scenario-d--peak-burst-resilience)
+5. [Scenario E — Long Context Performance](#scenario-e--long-context-performance)
 6. [Recommended Run Order](#recommended-run-order)
 
 ---
 
-## Scenario A — Single Request Baseline
+## Scenario A — Latency Baseline
+
+> Display name shown in reports: **Latency Baseline** (single-request baseline / TTFT + TPS)
 
 **Module:** `scenario_a.py`
 **Run:** `python -m ptu_benchmark --project projects/my-ptu --scenarios A` or `make run-a`
@@ -59,7 +61,9 @@ No configuration needed. Scenario A uses `default_max_tokens=2048` from config.
 
 ---
 
-## Scenario B — Concurrent Load
+## Scenario B — Concurrency Stress Test
+
+> Display name shown in reports: **Concurrency Stress Test** (10 / 50 / 100 parallel requests)
 
 **Module:** `scenario_b.py`
 **Run:** `python -m ptu_benchmark --project projects/my-ptu --scenarios B` or `make run-b`
@@ -165,7 +169,9 @@ headroom; if `THROTTLED` appears below your target traffic, scale up.
 
 ---
 
-## Scenario C — Sustained Throughput
+## Scenario C — Sustained Throughput Test
+
+> Display name shown in reports: **Sustained Throughput Test** (30-minute window)
 
 **Module:** `scenario_c.py`
 **Run:** `python -m ptu_benchmark --project projects/my-ptu --scenarios C` or `make run-c`
@@ -221,7 +227,9 @@ SUSTAINED_CONCURRENCY=20       # increase for higher-capacity PTUs
 
 ---
 
-## Scenario D — Peak Burst Test
+## Scenario D — Peak Burst Resilience
+
+> Display name shown in reports: **Peak Burst Resilience** (sudden simultaneous spike)
 
 **Module:** `scenario_d.py`
 **Run:** `python -m ptu_benchmark --project projects/my-ptu --scenarios D` or `make run-d`
@@ -273,7 +281,9 @@ BURST_SIZE=200     # increase to 500 for stress-testing large PTUs
 
 ---
 
-## Scenario E — Long Context Test
+## Scenario E — Long Context Performance
+
+> Display name shown in reports: **Long Context Performance** (large input context windows)
 
 **Module:** `scenario_e.py`
 **Run:** `python -m ptu_benchmark --project projects/my-ptu --scenarios E` or `make run-e`

@@ -2,7 +2,7 @@
 # PTU Benchmark — Makefile
 # ──────────────────────────────────────────────
 
-.PHONY: help install install-dev setup test lint run run-all run-a run-b run-c run-d run-e compare poc clean
+.PHONY: help install install-dev setup test test-integration lint format typecheck run run-all run-a run-b run-c run-d run-e compare poc clean
 
 help:  ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
@@ -23,8 +23,11 @@ setup:  ## Copy .env.example to .env (if .env doesn't exist)
 
 # ── Testing ────────────────────────────────────────────────────
 
-test:  ## Run unit tests
-	python -m pytest tests/ -v
+test:  ## Run unit tests (excludes integration tests)
+	python -m pytest tests/ -v -m "not integration"
+
+test-integration:  ## Run integration tests
+	python -m pytest tests/ -m integration -v
 
 # ── Benchmark runs ─────────────────────────────────────────────
 # Override at the command line:
@@ -36,7 +39,7 @@ test:  ## Run unit tests
 
 P ?= projects/qwen3.6-plus-2026-04-02_500K_100K
 B ?= projects/token-api
-SCN ?= A B
+SCN ?= A B C D E
 
 run:  ## Run all scenarios with A/B comparison. Vars: P, B, SCN
 	python -m ptu_benchmark --project $(P) --compare-with $(B) --scenarios $(SCN)
@@ -65,6 +68,17 @@ list:  ## List available scenarios
 
 compare: run  ## Alias for 'run' (A/B comparison)
 poc: run      ## Alias for 'run' — single-shot POC A/B run
+
+# ── Code Quality ──────────────────────────────────────────────
+
+lint:  ## Run ruff linter
+	ruff check src/ tests/
+
+format:  ## Format code with ruff
+	ruff format src/ tests/
+
+typecheck:  ## Run mypy type checking
+	mypy src/ptu_benchmark/
 
 # ── Cleanup ────────────────────────────────────────────────────
 

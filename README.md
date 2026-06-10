@@ -18,13 +18,18 @@ This tool provides a structured, repeatable way to demonstrate PTU performance a
 | **Concurrent throughput** | How many users can be served simultaneously without degradation |
 | **Sustained TPM** | Whether guaranteed throughput holds over time (not just bursts) |
 | **429 error rate** | Whether traffic spikes cause service interruptions |
+| **SLA compliance** | Optional pass/fail assessment against defined targets (availability, TTFT P95/P99, minimum TPS, error budget) |
 
-Each benchmark run automatically generates two customer-ready reports:
+Each benchmark run automatically generates customer-ready reports:
 
 | Report | Format | Description |
 |--------|--------|-------------|
-| **Executive Report** | Markdown + figures | Deep technical analysis with per-scenario breakdowns, statistical tables, matplotlib charts (TTFT percentiles, TPS throughput, error rates), and comparison deltas |
+| **Executive Report** | Markdown + figures | Deep technical analysis with a **Verdict by Scenario** dashboard, per-scenario breakdowns, statistical tables, matplotlib charts (TTFT percentiles, TPS throughput, error rates), and comparison deltas |
 | **Business Report** | DOCX (Word) | Concise one-page summary with headline metrics, explanations, scenario overview, key takeaways, and cost — ready for customer delivery |
+| **Customer POC Report** | Markdown | Auto-populated, fill-in-the-blank POC deliverable derived directly from the benchmark results (A/B mode; suppress with `--no-customer-report`) |
+| **Cost Analysis** | Markdown | Breakeven analysis and 12-month cost projection comparing PTU vs Token API (suppress with `--no-cost-report`) |
+
+All reports use **human-readable scenario names** (e.g. *Latency Baseline*, *Concurrency Stress Test*) alongside the single-letter keys.
 
 ---
 
@@ -42,22 +47,40 @@ PTU-Benchmark/
 │   ├── __main__.py                 # CLI entry point
 │   ├── config.py                   # Environment & configuration loader
 │   ├── utils.py                    # Prompts, data classes, helpers
-│   ├── reporter.py                 # Console output, JSON/CSV/report/chart export
+│   ├── reporter/                   # Reporting subpackage
+│   │   ├── console.py              # Banner / per-scenario console output
+│   │   ├── charts.py               # Matplotlib charts (TTFT, TPS, errors)
+│   │   ├── export.py               # JSON / CSV / dated-folder export
+│   │   ├── executive.py            # Executive Markdown report (with verdict dashboard)
+│   │   ├── business.py             # One-page DOCX business report
+│   │   ├── customer.py             # Auto-populated customer POC report
+│   │   ├── cost.py                 # Breakeven analysis & cost projection
+│   │   ├── sla.py                  # SLA compliance scoring (when sla_targets defined)
+│   │   └── utils.py                # Shared formatting helpers
 │   └── scenarios/                  # One module per benchmark scenario
-│       ├── base.py                 # Shared async streaming infrastructure
-│       ├── scenario_a.py           # A — Single Request Baseline
-│       ├── scenario_b.py           # B — Concurrent Load (10/50/100)
-│       ├── scenario_c.py           # C — Sustained Throughput (30 min)
-│       ├── scenario_d.py           # D — Peak Burst Test
-│       └── scenario_e.py           # E — Long Context (32K–128K)
-├── tests/                          # Unit tests
-├── results/                        # Dated export bundles (auto-created)
+│       ├── base.py                 # Shared async streaming + display_name infrastructure
+│       ├── scenario_a.py           # A — Latency Baseline
+│       ├── scenario_b.py           # B — Concurrency Stress Test (auto-derived levels)
+│       ├── scenario_c.py           # C — Sustained Throughput Test (30 min)
+│       ├── scenario_d.py           # D — Peak Burst Resilience
+│       └── scenario_e.py           # E — Long Context Performance (32K–128K)
+├── tests/                          # Unit + integration tests
+│   ├── conftest.py                 # Shared pytest fixtures
+│   ├── fixtures/                   # Recorded streaming response fixtures
+│   ├── test_config.py              # Unit — config loader
+│   ├── test_utils.py               # Unit — helpers / prompt builders
+│   ├── test_compare.py             # Unit — comparison reporter
+│   ├── test_scenarios_integration.py   # Integration — scenarios end-to-end
+│   └── test_workflow_integration.py    # Integration — CLI workflow
+├── reports/                        # Dated export bundles (auto-created)
 │   └── 20260605_ModelName_001/     # {date}_{model}_{NNN}
-│       └── results/
-│           ├── benchmark_results_*.json
-│           ├── benchmark_summary.csv
-│           ├── executive_report.md       ← ⭐ flagship report (A/B or standalone)
-│           └── business_report.docx     ← one-page business summary (Word)
+│       ├── PTU/                    # raw subject data (A/B mode)
+│       │   ├── benchmark_results_*.json
+│       │   └── benchmark_summary.csv
+│       ├── Token_API/              # raw baseline data (A/B mode)
+│       ├── figures/
+│       ├── executive_report.md     ← ⭐ flagship report (A/B or standalone)
+│       └── business_report.docx    ← one-page business summary (Word)
 ├── docs/                           # Extended documentation
 │   ├── USAGE.md                    # CLI reference & configuration guide
 │   ├── SCENARIOS.md                # Detailed scenario descriptions
@@ -115,6 +138,10 @@ cp -r projects/template projects/my-ptu
 
 See [projects/template/project.yaml](projects/template/project.yaml) for all available fields.
 
+> **Tip — request timeout**: a per-request HTTP timeout (default `120s`) is applied to every async request to prevent a hung upstream from stalling the benchmark. Override per project with `request_timeout: <seconds>` in `project.yaml`, or globally via the `PTU_REQUEST_TIMEOUT` environment variable.
+
+> **Tip — SLA compliance scoring**: Optional SLA targets (availability, TTFT P95/P99, minimum TPS, error budget) can be defined in `project.yaml` under `sla_targets`. When configured, the executive report includes a compliance assessment with pass/fail per target and headroom analysis.
+
 ### 4. Run Benchmarks
 
 ```bash
@@ -142,13 +169,13 @@ make run-a                  # Scenario A only (with compare)
 
 ## Benchmark Scenarios at a Glance
 
-| Scenario | Name | What It Measures | Duration |
-|----------|------|------------------|----------|
-| **A** | Single Request Baseline | TTFT and TPS with zero contention | ~2 min |
-| **B** | Concurrent Load | Performance at N parallel requests (auto-derived from `output_tpm` if not set) + TPM utilization vs quota | ~5 min |
-| **C** | Sustained Throughput | Max TPM maintained over 30 minutes | 30 min |
-| **D** | Peak Burst | Behaviour under sudden traffic spike (200 req) | ~2 min |
-| **E** | Long Context | TTFT/TPS with 32K, 64K, 128K token inputs | ~5 min |
+| Scenario | Display Name | What It Measures | Duration |
+|----------|--------------|------------------|----------|
+| **A** | Latency Baseline | TTFT and TPS with zero contention | ~2 min |
+| **B** | Concurrency Stress Test | Performance at N parallel requests (auto-derived from `output_tpm` if not set) + TPM utilization vs quota | ~5 min |
+| **C** | Sustained Throughput Test | Max TPM maintained over 30 minutes | 30 min |
+| **D** | Peak Burst Resilience | Behaviour under sudden traffic spike (200 req) | ~2 min |
+| **E** | Long Context Performance | TTFT/TPS with 32K, 64K, 128K token inputs | ~5 min |
 
 See [docs/SCENARIOS.md](docs/SCENARIOS.md) for a deep-dive into each scenario.
 
@@ -158,7 +185,8 @@ See [docs/SCENARIOS.md](docs/SCENARIOS.md) for a deep-dive into each scenario.
 
 ```
 usage: ptu-benchmark [-h] [--version] [--project PATH | --env PATH]
-                     [--compare-with PATH]
+                     [--compare-with PATH] [--no-compare]
+                     [--no-customer-report]
                      [--scenarios {A,B,C,D,E} ...]
                      [--list] [--export]
                      [--output-dir OUTPUT_DIR]
@@ -168,10 +196,15 @@ options:
   --project PATH         Project folder containing project.yaml
   --env PATH             Path to a .env file (legacy flat-config mode)
   --compare-with PATH    Second project folder for A/B comparison
+  --no-compare           Disable the implicit Token API baseline auto-applied with --project
+  --no-customer-report   Skip auto-generation of the customer POC report
   --scenarios A B D      Run specific scenarios (default: all)
   --list                 List available scenarios and exit
   --export               Export results (always on in project mode)
-  --output-dir DIR       Directory for exports (default: auto-named)
+  --output-dir DIR       Directory for exports (default: reports/)
+  --daily-volume TOKENS  Daily token volume for cost projection (overrides project.yaml)
+  --growth-rate RATE     Monthly growth rate as decimal (e.g., 0.1 for 10%)
+  --no-cost-report       Skip standalone cost analysis report generation
 ```
 
 See [docs/USAGE.md](docs/USAGE.md) for full configuration details.
@@ -180,40 +213,46 @@ See [docs/USAGE.md](docs/USAGE.md) for full configuration details.
 
 ## Result Output Structure
 
-Every run creates a **dated, auto-incremented result folder**:
+Every run creates a **dated, auto-incremented report folder**:
 
 ```
-results/
+reports/
   20260605_Qwen3.6-Plus-2026-04-02_001/
-    results/
-      benchmark_results_20260605T120000Z.json   ← full per-request data
-      benchmark_summary.csv                      ← aggregated statistics
-      executive_report.md                        ← detailed long-form report
-      figures/                                   ← matplotlib charts
-        ttft_percentiles.png
-        tps_throughput.png
-        error_rates.png
-      business_report.docx                       ← one-page business summary (Word)
+    data/                                      ← raw benchmark artefacts
+      benchmark_results_20260605T120000Z.json
+      benchmark_summary.csv
+    figures/                                   ← matplotlib charts
+      ttft_percentiles.png
+      tps_throughput.png
+      error_rates.png
+    executive_report.md                        ← detailed long-form report
+    business_report.docx                       ← one-page business summary (Word)
 ```
 
-For **A/B comparisons**, the bundle is organized under the subject model's code:
+For **A/B comparisons**, the bundle uses role-based subfolders:
 
 ```
-results/
-  20260605_PtuModel_vs_TokenApi_001/
-    results/
-      qwen3.6-plus-2026-04-02/               ← model report folder
-        executive_report.md                   ← ⭐ flagship A/B comparison
-        business_report.docx                  ← ⭐ DOCX twin
-        metrics.csv                           ← side-by-side numbers
-        subject_only_executive_report.md      ← PTU-only deep dive
-        subject_only_business_report.docx     ← PTU-only DOCX
-        figures/
-          ttft_percentiles.png                ← subject-only charts
-          comparison_ttft_percentiles.png     ← A/B comparison charts
-          comparison_vs_ttft_tps.png
-        qwen3.6-plus-2026-04-02_500K_100K/   ← PTU raw data
-        token-api/                            ← baseline raw data
+reports/
+  20260605_Qwen3.6-Plus-2026-04-02_001/
+    PTU/                                    ← raw subject data
+      benchmark_results_*.json
+      benchmark_summary.csv
+    Token_API/                              ← raw baseline data
+      benchmark_results_*.json
+      benchmark_summary.csv
+    figures/                                ← all charts (standalone + comparison)
+      ttft_percentiles.png
+      tps_throughput.png
+      error_rates.png
+      comparison_ttft_percentiles.png
+      comparison_tps_throughput.png
+      comparison_error_rates.png
+      comparison_vs_ttft_tps.png
+    executive_report.md                     ← ⭐ flagship A/B comparison
+    business_report.docx                    ← ⭐ DOCX twin
+    customer_report.md                      ← customer-facing POC report
+    cost_analysis.md                        ← breakeven & cost projection
+    metrics.csv                             ← side-by-side numbers
 ```
 
 ### Report Types
@@ -223,7 +262,8 @@ results/
 | `executive_report.md` | Markdown + PNG | Technical teams | In A/B mode: flagship full comparison with per-scenario breakdowns, TTFT percentile tables, throughput statistics, matplotlib charts, comparison deltas, and auto-generated findings for **both** arms. In single-project mode: equivalent depth for one project. |
 | `business_report.docx` | DOCX (Word) | Decision makers | Professional one-page summary with headline metrics, explanations of what each metric means, scenario overview, key takeaways, and cost summary |
 | `metrics.csv` | CSV | Data analysts | Flat side-by-side metrics for spreadsheet pivots and further analysis |
-| `subject_only_executive_report.md` | Markdown + PNG | Technical teams | PTU-only deep dive (generated alongside the A/B report for reference) |
+| `customer_report.md` | Markdown | Customers | Customer-facing POC report with editable sections for personalization |
+| `cost_analysis.md` | Markdown | Decision makers | Breakeven analysis and cost projection (PTU vs Token API). Suppress with `--no-cost-report`. |
 | `figures/*.png` | PNG images | Both | Matplotlib-generated charts: TTFT percentiles, TPS throughput, error rates, and comparison charts |
 | `benchmark_results_*.json` | JSON | Engineers | Raw per-request timing data for custom analysis |
 | `benchmark_summary.csv` | CSV | Analysts | Aggregated statistics (P50/P95/P99, TPS, error rates) |
@@ -231,6 +271,15 @@ results/
 ---
 
 ## Example Output
+
+The CLI shows a real-time, single-line progress bar while scenarios run.
+All verbose per-request logs and summaries are written to `benchmark.log`
+inside the report bundle.
+
+### TTY mode (interactive terminal)
+
+The active scenario rewrites a single line via `\r`; once it finishes,
+the line is committed to scrollback so you can review history.
 
 ```
 ============================================================
@@ -242,40 +291,64 @@ results/
   Quota:      100,000 input TPM  /  10,000 output TPM
   Price:      $19.20/hour
   Base URL:   https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-  Running:    A, B, C, D, E
+  Scenarios:  A, B, C, D, E
+  Bundle:     reports/20260610_Qwen3.6-Plus_001
+  Log file:   reports/20260610_Qwen3.6-Plus_001/benchmark.log
 
-------------------------------------------------------------
-  Scenario A: Single Request Baseline (TTFT + TPS)
-------------------------------------------------------------
---- Short prompt (5 runs) ---
-[Short Run 1] TTFT: 312ms | TPS: 62.4 | Total: 3.41s | Tokens: 195
-[Short Run 2] TTFT: 298ms | TPS: 64.1 | Total: 3.28s | Tokens: 190
-...
+[09:22:29] |███░░░░░░░░░░░░░░░░░░░░░░░░░░░|   5% [ 1/ 5] Scenario A (Latency Baseline)...
+[09:22:59] |██████░░░░░░░░░░░░░░░░░░░░░░░░|  20% [ 1/ 5] Scenario A (Latency Baseline) — Success (30.4s)
+[09:23:00] |████████░░░░░░░░░░░░░░░░░░░░░░|  25% [ 2/ 5] Scenario B (Concurrency Stress Test)...
+[09:24:42] |████████████░░░░░░░░░░░░░░░░░░|  40% [ 2/ 5] Scenario B (Concurrency Stress Test) — Success (102.1s)
+…
+[09:31:18] |██████████████████████████████| 100% [ 5/ 5] Complete ✓ (total: 528.7s)
 
-============================================================
-  Scenario A: Single Request Baseline (TTFT + TPS)
-============================================================
-  Total: 8 | Success: 8 | Errors: 0 | 429s: 0
-  TTFT  → P50: 305ms | P95: 340ms | P99: 355ms
-  TPS   → Avg: 63.2 | Min: 58.7 | Max: 67.1
-  Est. TPM: 11,376
-
-  Results exported:
-    JSON              → results/20260605_Qwen3.6-Plus_001/results/benchmark_results_*.json
-    CSV               → results/20260605_Qwen3.6-Plus_001/results/benchmark_summary.csv
-    Executive Report  → results/20260605_Qwen3.6-Plus_001/results/executive_report.md
-    Figures           → results/20260605_Qwen3.6-Plus_001/results/figures/ (3 charts)
-    Business Report   → results/20260605_Qwen3.6-Plus_001/results/business_report.docx
+  Bundle: reports/20260610_Qwen3.6-Plus_001/
+  Log:    reports/20260610_Qwen3.6-Plus_001/benchmark.log
 ```
+
+### Piped / non-TTY mode
+
+When stdout is redirected (e.g. `python -m ptu_benchmark … | tee run.txt`),
+the bar collapses to plain line-by-line output — no `\r`, no block chars,
+no in-place rewriting:
+
+```
+[09:22:59]  20% [ 1/ 5] Scenario A (Latency Baseline) — Success (30.4s)
+[09:24:42]  40% [ 2/ 5] Scenario B (Concurrency Stress Test) — Success (102.1s)
+[09:27:08]  60% [ 3/ 5] Scenario C (Sustained Throughput) — Success (146.2s)
+[09:29:31]  80% [ 4/ 5] Scenario D (Burst Test) — Success (143.0s)
+[09:31:18] 100% [ 5/ 5] Scenario E (Long Context) — Success (107.0s)
+[09:31:18] 100% Complete ✓ (total: 528.7s)
+```
+
+### benchmark.log
+
+The full verbose execution trace — banner, scenario headers, every
+per-request line, scenario summaries, and report-export details — is
+captured in `reports/<bundle>/benchmark.log` so the terminal stays clean
+during the run.
 
 ---
 
 ## Running Tests
 
 ```bash
-make test
-# or
-python -m pytest tests/ -v
+make test               # unit tests only (fast)
+make test-integration   # integration tests (scenarios + workflow)
+
+# or directly:
+python -m pytest tests/ -v -m "not integration"
+python -m pytest tests/ -m integration -v
+```
+
+## Code Quality
+
+The project uses **ruff** (lint + format) and **mypy** (type checking). All three are configured in `pyproject.toml`:
+
+```bash
+make lint        # ruff check src/ tests/
+make format      # ruff format src/ tests/
+make typecheck   # mypy src/ptu_benchmark/
 ```
 
 ---
@@ -332,25 +405,30 @@ python -m pytest tests/ -v
 ## Make Commands
 
 ```bash
-make help          # Show all available commands
-make install       # Install production dependencies
-make install-dev   # Install dev dependencies (+ pytest)
-make setup         # Create .env from template
-make test          # Run unit tests
-make run           # ⭐ Run all scenarios with A/B comparison (PTU vs Token API)
-make run-a         # Scenario A only (with compare)
-make run-b         # Scenario B only (with compare)
-make run-c         # Scenario C only (with compare)
-make run-d         # Scenario D only (with compare)
-make run-e         # Scenario E only (with compare)
-make compare       # Alias for 'run' (A/B comparison)
-make poc           # Alias for 'run' (A/B comparison)
-make list          # List available scenarios
-make clean         # Remove caches and generated files
+make help              # Show all available commands
+make install           # Install production dependencies
+make install-dev       # Install dev dependencies (+ pytest)
+make setup             # Create .env from template
+make test              # Run unit tests (excludes integration)
+make test-integration  # Run integration tests (scenarios + workflow)
+make lint              # Run ruff linter
+make format            # Format code with ruff
+make typecheck         # Run mypy type checking
+make run               # ⭐ Run all scenarios with A/B comparison (PTU vs Token API)
+make run-a             # Scenario A only (with compare)
+make run-b             # Scenario B only (with compare)
+make run-c             # Scenario C only (with compare)
+make run-d             # Scenario D only (with compare)
+make run-e             # Scenario E only (with compare)
+make compare           # Alias for 'run' (A/B comparison)
+make poc               # Alias for 'run' (A/B comparison)
+make list              # List available scenarios
+make clean             # Remove caches and generated files
 ```
 
 ---
 
 ## License
 
+MIT — see individual file headers for details.
 MIT — see individual file headers for details.

@@ -1,8 +1,0 @@
-- Entry point: `src/ptu_benchmark/__main__.py` provides a CLI via argparse, orchestrating scenario execution through `run_benchmarks()`.
-- Configuration layer: `config.py` defines a `BenchmarkConfig` dataclass loaded from environment variables / `.env` files via `python-dotenv`, with validation of required credentials (`DASHSCOPE_API_KEY`, `PTU_MODEL_ID`).
-- Scenario abstraction: `scenarios/base.py` declares an abstract `BaseScenario` class with a `run() -> ScenarioResult` contract; five concrete subclasses (A–E) in `scenario_a.py` through `scenario_e.py` implement distinct load patterns (single-request baseline, concurrent load, sustained throughput, burst, long context).
-- Registry pattern: `scenarios/__init__.py` exports a `SCENARIOS` dict mapping keys A–E to their classes, enabling selective or bulk execution.
-- Shared async infrastructure: `base.py` provides `async_streaming_request()` and `run_concurrent_requests()` using `aiohttp` for SSE-stream parsing and concurrent request dispatch.
-- Result model: `utils.py` defines `SingleRequestResult` and `ScenarioResult` dataclasses with aggregate properties (`successful`, `failed`, `rate_limited`) and serialization (`to_dict()`).
-- Reporting layer: `reporter.py` handles console output (percentile-based TTFT/TPS stats via `numpy`), JSON export, and CSV summary generation using `tabulate`.
-- Dependency direction: CLI → config → scenario registry → base scenario → utils/reporter; scenarios depend on config and shared async helpers but not on each other.
